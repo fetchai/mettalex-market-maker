@@ -12,7 +12,14 @@ contract IMintable {
 contract MettalexContract {
     using SafeMath for uint256;
 
-    string public CONTRACT_NAME = "mock";
+    string public CONTRACT_NAME = "Mettalex";
+
+    uint public PRICE_SPOT;  // MMcD 20200430: Addition to interface to allow admin to set pricing
+    address owner;
+    mapping (address => uint) longToSettle;
+    mapping (address => uint) shortToSettle;
+    uint totalLongToSettle;
+    uint totalShortToSettle;
 
     uint public PRICE_CAP;
     uint public PRICE_FLOOR;
@@ -74,6 +81,7 @@ contract MettalexContract {
 
         MKT_TOKEN_FEE_PER_UNIT = COLLATERAL_TOKEN_FEE_PER_UNIT.
             div(2);
+        owner = msg.sender;
     }
 
     function mktToken()
@@ -150,13 +158,25 @@ contract MettalexContract {
         collateral.mint(msg.sender, collateralToReturn);
     }
 
-    function settleAndClose(address, uint, uint) external pure {
-        revert("NOT_IMPLEMENTED");
+    // MMcD 20200430: New method to trade at settlement price on next spot price update
+    function tradeAtSettlement(
+        address token,
+        uint qtyToTrade
+    )
+        public
+    {
+        require((token == LONG_POSITION_TOKEN) || (token == SHORT_POSITION_TOKEN));
+        IERC20 position = IERC20(token);
+        if (token == LONG_POSITION_TOKEN) {
+            totalLongToSettle += qtyToTrade;
+            longToSettle[msg.sender] += qtyToTrade;
+        } else {
+            totalShortToSettle += qtyToTrade;
+            shortToSettle[msg.sender] += qtyToTrade;
+        }
+        position.transferFrom(msg.sender, address(this), qtyToTrade);
     }
 
-    function addAddressToWhiteList(address contractAddress) external {
-        contractWhitelist[contractAddress] = true;
-    }
 
     function isAddressWhiteListed(address contractAddress)
         external
@@ -166,9 +186,19 @@ contract MettalexContract {
         return contractWhitelist[contractAddress];
     }
 
+    // Privileged methods: owner only
+
+    function updateSpot(uint price)
+        public
+    {
+        require(msg.sender == owner, "OWNER_ONLY");
+        PRICE_SPOT = price;
+    }
+
     function settleContract(uint finalSettlementPrice)
         public
     {
+        require(msg.sender == owner, "OWNER_ONLY");
         settlementTimeStamp = now;
         settlementPrice = finalSettlementPrice;
         emit ContractSettled(finalSettlementPrice);
@@ -177,10 +207,21 @@ contract MettalexContract {
     function arbitrateSettlement(uint256 price)
         public
     {
+        require(msg.sender == owner, "OWNER_ONLY");
         require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
         lastPrice = price;
         emit UpdatedLastPrice(price);
         settleContract(price);
         isSettled = true;
+    }
+
+    function settleAndClose(address, uint, uint) external {
+        require(msg.sender == owner, "OWNER_ONLY");
+        revert("NOT_IMPLEMENTED");
+    }
+
+    function addAddressToWhiteList(address contractAddress) external {
+        require(msg.sender == owner, "OWNER_ONLY");
+        contractWhitelist[contractAddress] = true;
     }
 }
