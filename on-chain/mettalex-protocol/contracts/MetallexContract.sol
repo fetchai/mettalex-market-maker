@@ -16,10 +16,21 @@ contract MettalexContract {
 
     uint public PRICE_SPOT;  // MMcD 20200430: Addition to interface to allow admin to set pricing
     address owner;
-    mapping (address => uint) longToSettle;
-    mapping (address => uint) shortToSettle;
+
+    // Trade At Settlement: keep track of cumulative tokens on each side
+    // and partition settlement amount based on (addedQty - initialQty)/totalSettled
+    struct SettlementOrder {
+        uint initialQty;
+        uint addedQty;
+    }
+    mapping (address => SettlementOrder) longToSettle;
+    mapping (address => SettlementOrder) shortToSettle;
     uint totalLongToSettle;
     uint totalShortToSettle;
+    uint totalSettled;
+    // Partition total settled value between long and short positions
+    uint longSettledValue;
+    uint shortSettledValue;
 
     uint public PRICE_CAP;
     uint public PRICE_FLOOR;
@@ -145,7 +156,7 @@ contract MettalexContract {
         address,
         uint qtyToRedeem
     )
-        external
+        public
     {
         IMintable long = IMintable(LONG_POSITION_TOKEN);
         IMintable short = IMintable(SHORT_POSITION_TOKEN);
@@ -168,15 +179,62 @@ contract MettalexContract {
         require((token == LONG_POSITION_TOKEN) || (token == SHORT_POSITION_TOKEN));
         IERC20 position = IERC20(token);
         if (token == LONG_POSITION_TOKEN) {
+            require(longToSettle[msg.sender].addedQty == 0, "Single TAS order allowed" );
+            longToSettle[msg.sender] = SettlementOrder(
+                {initialQty: totalLongToSettle, addedQty: qtyToTrade}
+            );
             totalLongToSettle += qtyToTrade;
-            longToSettle[msg.sender] += qtyToTrade;
         } else {
+            require(shortToSettle[msg.sender].addedQty == 0, "Single TAS order allowed" );
+            shortToSettle[msg.sender] = SettlementOrder(
+                {initialQty: totalShortToSettle, addedQty: qtyToTrade}
+            );
             totalShortToSettle += qtyToTrade;
-            shortToSettle[msg.sender] += qtyToTrade;
         }
         position.transferFrom(msg.sender, address(this), qtyToTrade);
     }
 
+    function clearLongSettledTrade()
+        external
+    {
+        // 20200430 MMcD: Post TAS retrieve the collateral from settlement
+        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
+
+        if ((longToSettle[msg.sender].addedQty > 0) &&
+            (longToSettle[msg.sender].initialQty < totalSettled)
+        ) {
+            uint contrib = longToSettle[msg.sender].addedQty;
+            if ((contrib + longToSettle[msg.sender].initialQty) > totalSettled) {
+                // Cap the amount of collateral that can be reclaimed to the total
+                // settled in TAS auction
+                contrib = totalSettled - longToSettle[msg.sender].initialQty;
+            }
+            longToSettle[msg.sender].addedQty -= contrib;
+            uint collateralQty = contrib.mul(longSettledValue).div(totalSettled);
+            collateral.transfer(msg.sender, collateralQty);
+        }
+    }
+
+    function clearShortSettledTrade()
+        external
+    {
+        // 20200430 MMcD: Post TAS retrieve the collateral from settlement
+        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
+
+        if ((shortToSettle[msg.sender].addedQty > 0) &&
+            (shortToSettle[msg.sender].initialQty < totalSettled)
+        ) {
+            uint contrib = shortToSettle[msg.sender].addedQty;
+            if ((contrib + shortToSettle[msg.sender].initialQty) > totalSettled) {
+                // Cap the amount of collateral that can be reclaimed to the total
+                // settled in TAS auction
+                contrib = totalSettled - shortToSettle[msg.sender].initialQty;
+            }
+            shortToSettle[msg.sender].addedQty -= contrib;
+            uint collateralQty = contrib.mul(shortSettledValue).div(totalSettled);
+            collateral.transfer(msg.sender, collateralQty);
+        }
+    }
 
     function isAddressWhiteListed(address contractAddress)
         external
@@ -192,7 +250,22 @@ contract MettalexContract {
         public
     {
         require(msg.sender == owner, "OWNER_ONLY");
+        require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
         PRICE_SPOT = price;
+        // MMcD 20204030: Deal with trade at settlement orders
+        // Currently only have single settlement event
+        if ((totalLongToSettle > 0) && (totalShortToSettle > 0)) {
+            if (totalLongToSettle >= totalShortToSettle) {
+                totalSettled = totalShortToSettle;
+            } else {
+                totalSettled = totalLongToSettle;
+            }
+            totalLongToSettle -= totalSettled;
+            totalShortToSettle -= totalSettled;
+            longSettledValue = PRICE_SPOT.sub(PRICE_FLOOR).mul(QTY_MULTIPLIER).mul(totalSettled);
+            shortSettledValue = PRICE_CAP.sub(PRICE_SPOT).mul(QTY_MULTIPLIER).mul(totalSettled);
+            redeemPositionTokens(address(this), totalSettled);
+        }
     }
 
     function settleContract(uint finalSettlementPrice)
