@@ -153,7 +153,7 @@ contract MettalexContract {
     }
 
     function redeemPositionTokens(
-        address,
+        address to_address,
         uint qtyToRedeem
     )
         public
@@ -164,9 +164,9 @@ contract MettalexContract {
         long.burn(msg.sender, qtyToRedeem);
         short.burn(msg.sender, qtyToRedeem);
 
-        IMintable collateral = IMintable(COLLATERAL_TOKEN_ADDRESS);
+        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
         uint collateralToReturn = COLLATERAL_PER_UNIT.mul(qtyToRedeem);
-        collateral.mint(msg.sender, collateralToReturn);
+        collateral.transfer(msg.sender, collateralToReturn);
     }
 
     // MMcD 20200430: New method to trade at settlement price on next spot price update
@@ -210,7 +210,13 @@ contract MettalexContract {
                 contrib = totalSettled - longToSettle[msg.sender].initialQty;
             }
             longToSettle[msg.sender].addedQty -= contrib;
-            uint collateralQty = contrib.mul(longSettledValue).div(totalSettled);
+            uint positionQty = contrib.mul(longSettledValue).div(totalSettled);
+            uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
+
+            IMintable long = IMintable(LONG_POSITION_TOKEN);
+
+            long.burn(address(this), contrib);
+
             collateral.transfer(msg.sender, collateralQty);
         }
     }
@@ -231,7 +237,11 @@ contract MettalexContract {
                 contrib = totalSettled - shortToSettle[msg.sender].initialQty;
             }
             shortToSettle[msg.sender].addedQty -= contrib;
-            uint collateralQty = contrib.mul(shortSettledValue).div(totalSettled);
+            uint positionQty = contrib.mul(shortSettledValue).div(totalSettled);
+            uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
+
+            IMintable short = IMintable(SHORT_POSITION_TOKEN);
+            short.burn(address(this), contrib);
             collateral.transfer(msg.sender, collateralQty);
         }
     }
@@ -262,9 +272,9 @@ contract MettalexContract {
             }
             totalLongToSettle -= totalSettled;
             totalShortToSettle -= totalSettled;
-            longSettledValue = PRICE_SPOT.sub(PRICE_FLOOR).mul(QTY_MULTIPLIER).mul(totalSettled);
-            shortSettledValue = PRICE_CAP.sub(PRICE_SPOT).mul(QTY_MULTIPLIER).mul(totalSettled);
-            redeemPositionTokens(address(this), totalSettled);
+            longSettledValue = PRICE_SPOT.sub(PRICE_FLOOR).mul(totalSettled).div(PRICE_CAP.sub(PRICE_FLOOR));
+            shortSettledValue = PRICE_CAP.sub(PRICE_SPOT).mul(totalSettled).div(PRICE_CAP.sub(PRICE_FLOOR));
+            // redeemPositionTokens(address(this), totalSettled);
         }
     }
 
