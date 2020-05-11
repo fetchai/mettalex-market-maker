@@ -50,7 +50,7 @@ contract MettalexContract {
     address public COLLATERAL_POOL_ADDRESS;
     address public LONG_POSITION_TOKEN;
     address public SHORT_POSITION_TOKEN;
-    address public MARKET_TOKEN_ADDRESS;
+    address public PRICE_UPDATE_ADDRESS;
 
     mapping (address => bool) public contractWhitelist;
 
@@ -63,7 +63,7 @@ contract MettalexContract {
         address collateralToken,
         address longPositionToken,
         address shortPositionToken,
-        address marketToken,
+        address priceUpdateAddress,
         uint cap,
         uint floor,
         uint multiplier,
@@ -75,7 +75,7 @@ contract MettalexContract {
         COLLATERAL_TOKEN_ADDRESS = collateralToken;
         LONG_POSITION_TOKEN = longPositionToken;
         SHORT_POSITION_TOKEN = shortPositionToken;
-        MARKET_TOKEN_ADDRESS = marketToken;
+        PRICE_UPDATE_ADDRESS = priceUpdateAddress;
 
         PRICE_CAP = cap;
         PRICE_FLOOR = floor;
@@ -95,12 +95,12 @@ contract MettalexContract {
         owner = msg.sender;
     }
 
-    function mktToken()
+    function priceUpdater()
         public
         view
         returns (address)
     {
-        return MARKET_TOKEN_ADDRESS;
+        return PRICE_UPDATE_ADDRESS;
     }
 
     function isPostSettlementDelay()
@@ -114,7 +114,7 @@ contract MettalexContract {
     function mintPositionTokens(
         address marketContractAddress,
         uint qtyToMint,
-        bool isAttemptToPayInMKT
+        bool // Unused, to remove - used to be payFeeInMkt
     )
         external
     {
@@ -123,28 +123,13 @@ contract MettalexContract {
 
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
         uint collateralRequired = COLLATERAL_PER_UNIT.mul(qtyToMint);
-        if (isAttemptToPayInMKT) {
-            IERC20 mtk = IERC20(MARKET_TOKEN_ADDRESS);
-            uint mktFeeRequired = MKT_TOKEN_FEE_PER_UNIT.mul(qtyToMint);
 
-            collateral.transferFrom(
-                msg.sender,
-                address(this),
-                collateralRequired);
-            mtk.transferFrom(
-                msg.sender,
-                address(this),
-                mktFeeRequired
-            );
-
-        } else {
-            uint collateralFeeRequired = COLLATERAL_TOKEN_FEE_PER_UNIT.mul(qtyToMint);
-            collateral.transferFrom(
-                msg.sender,
-                address(this),
-                collateralRequired.add(collateralFeeRequired)
-            );
-        }
+        uint collateralFeeRequired = COLLATERAL_TOKEN_FEE_PER_UNIT.mul(qtyToMint);
+        collateral.transferFrom(
+            msg.sender,
+            address(this),
+            collateralRequired.add(collateralFeeRequired)
+        );
 
         IMintable long = IMintable(LONG_POSITION_TOKEN);
         IMintable short = IMintable(SHORT_POSITION_TOKEN);
@@ -259,7 +244,7 @@ contract MettalexContract {
     function updateSpot(uint price)
         public
     {
-        require(msg.sender == owner, "OWNER_ONLY");
+        require(msg.sender == PRICE_UPDATE_ADDRESS, "ORACLE_ONLY");
         require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
         PRICE_SPOT = price;
         // MMcD 20204030: Deal with trade at settlement orders
