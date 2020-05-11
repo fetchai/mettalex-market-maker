@@ -189,19 +189,22 @@ contract MettalexContract {
             (longToSettle[msg.sender].initialQty < totalSettled)
         ) {
             uint contrib = longToSettle[msg.sender].addedQty;
+            uint excessQty = 0;
             if ((contrib + longToSettle[msg.sender].initialQty) > totalSettled) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
                 contrib = totalSettled - longToSettle[msg.sender].initialQty;
+                // Transfer any uncrossed position tokens
+                excessQty = longToSettle[msg.sender].addedQty - contrib;
+                IERC20 long_t = IERC20(LONG_POSITION_TOKEN);
+                long_t.transfer(msg.sender, excessQty);
             }
             longToSettle[msg.sender].addedQty -= contrib;
             uint positionQty = contrib.mul(longSettledValue).div(totalSettled);
             uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
 
             IMintable long = IMintable(LONG_POSITION_TOKEN);
-
             long.burn(address(this), contrib);
-
             collateral.transfer(msg.sender, collateralQty);
         }
     }
@@ -216,10 +219,15 @@ contract MettalexContract {
             (shortToSettle[msg.sender].initialQty < totalSettled)
         ) {
             uint contrib = shortToSettle[msg.sender].addedQty;
+            uint excessQty = 0;
             if ((contrib + shortToSettle[msg.sender].initialQty) > totalSettled) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
                 contrib = totalSettled - shortToSettle[msg.sender].initialQty;
+                // Transfer any uncrossed position tokens
+                excessQty = shortToSettle[msg.sender].addedQty - contrib;
+                IERC20 short_t = IERC20(SHORT_POSITION_TOKEN);
+                short_t.transfer(msg.sender, excessQty);
             }
             shortToSettle[msg.sender].addedQty -= contrib;
             uint positionQty = contrib.mul(shortSettledValue).div(totalSettled);
