@@ -185,15 +185,18 @@ contract MettalexContract {
         // 20200430 MMcD: Post TAS retrieve the collateral from settlement
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
 
-        if ((longToSettle[msg.sender].addedQty > 0) &&
-            (longToSettle[msg.sender].initialQty < totalSettled)
-        ) {
+        if (longToSettle[msg.sender].addedQty > 0)
+        {
             uint contrib = longToSettle[msg.sender].addedQty;
             uint excessQty = 0;
-            if ((contrib + longToSettle[msg.sender].initialQty) > totalSettled) {
+            if ((contrib + longToSettle[msg.sender].initialQty) >= totalSettled) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
-                contrib = totalSettled - longToSettle[msg.sender].initialQty;
+                if (longToSettle[msg.sender].initialQty >= totalSettled) {
+                    contrib = 0;
+                } else {
+                    contrib = totalSettled - longToSettle[msg.sender].initialQty;
+                }
                 // Transfer any uncrossed position tokens
                 excessQty = longToSettle[msg.sender].addedQty - contrib;
                 IERC20 long_t = IERC20(LONG_POSITION_TOKEN);
@@ -215,15 +218,18 @@ contract MettalexContract {
         // 20200430 MMcD: Post TAS retrieve the collateral from settlement
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
 
-        if ((shortToSettle[msg.sender].addedQty > 0) &&
-            (shortToSettle[msg.sender].initialQty < totalSettled)
-        ) {
+        if (shortToSettle[msg.sender].addedQty > 0)
+        {
             uint contrib = shortToSettle[msg.sender].addedQty;
             uint excessQty = 0;
-            if ((contrib + shortToSettle[msg.sender].initialQty) > totalSettled) {
+            if ((contrib + shortToSettle[msg.sender].initialQty) >= totalSettled) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
-                contrib = totalSettled - shortToSettle[msg.sender].initialQty;
+                if (shortToSettle[msg.sender].initialQty >= totalSettled) {
+                    contrib = 0;
+                } else {
+                    contrib = totalSettled - shortToSettle[msg.sender].initialQty;
+                }
                 // Transfer any uncrossed position tokens
                 excessQty = shortToSettle[msg.sender].addedQty - contrib;
                 IERC20 short_t = IERC20(SHORT_POSITION_TOKEN);
