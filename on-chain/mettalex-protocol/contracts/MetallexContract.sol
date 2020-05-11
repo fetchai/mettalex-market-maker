@@ -20,17 +20,28 @@ contract MettalexContract {
     // Trade At Settlement: keep track of cumulative tokens on each side
     // and partition settlement amount based on (addedQty - initialQty)/totalSettled
     struct SettlementOrder {
+        uint index;
         uint initialQty;
         uint addedQty;
     }
     mapping (address => SettlementOrder) longToSettle;
     mapping (address => SettlementOrder) shortToSettle;
+
+    // State variables that are cleared after each price update
+    // These keep track of total long and short trade at settlement orders 
+    // that have been submitted
     uint totalLongToSettle;
     uint totalShortToSettle;
-    uint totalSettled;
-    // Partition total settled value between long and short positions
-    uint longSettledValue;
-    uint shortSettledValue;
+
+    // Running count of number of price updates
+    uint priceUpdateCount;
+    
+    // For each price update we store the total amount of position tokens that have been
+    // settled using time at settlement orders, and the proportion of total value that 
+    // goes to long and short positions.
+    mapping(uint => uint) totalSettled;
+    mapping(uint => uint) longSettledValue;
+    mapping(uint => uint) shortSettledValue;
 
     uint public PRICE_CAP;
     uint public PRICE_FLOOR;
@@ -50,7 +61,7 @@ contract MettalexContract {
     address public COLLATERAL_POOL_ADDRESS;
     address public LONG_POSITION_TOKEN;
     address public SHORT_POSITION_TOKEN;
-    address public PRICE_UPDATE_ADDRESS;
+    address public ORACLE_ADDRESS;
 
     mapping (address => bool) public contractWhitelist;
 
@@ -63,7 +74,7 @@ contract MettalexContract {
         address collateralToken,
         address longPositionToken,
         address shortPositionToken,
-        address priceUpdateAddress,
+        address oracleAddress,
         uint cap,
         uint floor,
         uint multiplier,
@@ -75,7 +86,7 @@ contract MettalexContract {
         COLLATERAL_TOKEN_ADDRESS = collateralToken;
         LONG_POSITION_TOKEN = longPositionToken;
         SHORT_POSITION_TOKEN = shortPositionToken;
-        PRICE_UPDATE_ADDRESS = priceUpdateAddress;
+        ORACLE_ADDRESS = oracleAddress;
 
         PRICE_CAP = cap;
         PRICE_FLOOR = floor;
@@ -100,7 +111,7 @@ contract MettalexContract {
         view
         returns (address)
     {
-        return PRICE_UPDATE_ADDRESS;
+        return ORACLE_ADDRESS;
     }
 
     function isPostSettlementDelay()
@@ -166,13 +177,13 @@ contract MettalexContract {
         if (token == LONG_POSITION_TOKEN) {
             require(longToSettle[msg.sender].addedQty == 0, "Single TAS order allowed" );
             longToSettle[msg.sender] = SettlementOrder(
-                {initialQty: totalLongToSettle, addedQty: qtyToTrade}
+                {index: priceUpdateCount, initialQty: totalLongToSettle, addedQty: qtyToTrade}
             );
             totalLongToSettle += qtyToTrade;
         } else {
             require(shortToSettle[msg.sender].addedQty == 0, "Single TAS order allowed" );
             shortToSettle[msg.sender] = SettlementOrder(
-                {initialQty: totalShortToSettle, addedQty: qtyToTrade}
+                {index: priceUpdateCount, initialQty: totalShortToSettle, addedQty: qtyToTrade}
             );
             totalShortToSettle += qtyToTrade;
         }
@@ -187,24 +198,30 @@ contract MettalexContract {
 
         if (longToSettle[msg.sender].addedQty > 0)
         {
+            uint settleInd = longToSettle[msg.sender].index;
+            require(settleInd < priceUpdateCount, "Can only clear previously settled order");
             uint contrib = longToSettle[msg.sender].addedQty;
             uint excessQty = 0;
-            if ((contrib + longToSettle[msg.sender].initialQty) >= totalSettled) {
+            if ((contrib + longToSettle[msg.sender].initialQty) >= totalSettled[settleInd]) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
-                if (longToSettle[msg.sender].initialQty >= totalSettled) {
+                if (longToSettle[msg.sender].initialQty >= totalSettled[settleInd]) {
                     contrib = 0;
                 } else {
-                    contrib = totalSettled - longToSettle[msg.sender].initialQty;
+                    contrib = totalSettled[settleInd] - longToSettle[msg.sender].initialQty;
                 }
-                // Transfer any uncrossed position tokens
                 excessQty = longToSettle[msg.sender].addedQty - contrib;
-                IERC20 long_t = IERC20(LONG_POSITION_TOKEN);
-                long_t.transfer(msg.sender, excessQty);
             }
-            longToSettle[msg.sender].addedQty -= contrib;
-            uint positionQty = contrib.mul(longSettledValue).div(totalSettled);
+            longToSettle[msg.sender].index = 0;
+            longToSettle[msg.sender].addedQty = 0;
+            longToSettle[msg.sender].initialQty = 0;
+
+            uint positionQty = contrib.mul(longSettledValue[settleInd]).div(totalSettled[settleInd]);
             uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
+
+            // Transfer any uncrossed position tokens
+            IERC20 long_t = IERC20(LONG_POSITION_TOKEN);
+            long_t.transfer(msg.sender, excessQty);
 
             IMintable long = IMintable(LONG_POSITION_TOKEN);
             long.burn(address(this), contrib);
@@ -220,24 +237,31 @@ contract MettalexContract {
 
         if (shortToSettle[msg.sender].addedQty > 0)
         {
+            uint settleInd = shortToSettle[msg.sender].index;
+            require(settleInd < priceUpdateCount, "Can only clear previously settled order");
             uint contrib = shortToSettle[msg.sender].addedQty;
             uint excessQty = 0;
-            if ((contrib + shortToSettle[msg.sender].initialQty) >= totalSettled) {
+            if ((contrib + shortToSettle[msg.sender].initialQty) >= totalSettled[settleInd]) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
-                if (shortToSettle[msg.sender].initialQty >= totalSettled) {
+                if (shortToSettle[msg.sender].initialQty >= totalSettled[settleInd]) {
                     contrib = 0;
                 } else {
-                    contrib = totalSettled - shortToSettle[msg.sender].initialQty;
+                    contrib = totalSettled[settleInd] - shortToSettle[msg.sender].initialQty;
                 }
                 // Transfer any uncrossed position tokens
                 excessQty = shortToSettle[msg.sender].addedQty - contrib;
-                IERC20 short_t = IERC20(SHORT_POSITION_TOKEN);
-                short_t.transfer(msg.sender, excessQty);
             }
-            shortToSettle[msg.sender].addedQty -= contrib;
-            uint positionQty = contrib.mul(shortSettledValue).div(totalSettled);
+            shortToSettle[msg.sender].index = 0;
+            shortToSettle[msg.sender].addedQty = 0;
+            shortToSettle[msg.sender].initialQty = 0;
+
+            uint positionQty = contrib.mul(shortSettledValue[settleInd]).div(totalSettled[settleInd]);
             uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
+
+            // Transfer any uncrossed position tokens
+            IERC20 short_t = IERC20(SHORT_POSITION_TOKEN);
+            short_t.transfer(msg.sender, excessQty);
 
             IMintable short = IMintable(SHORT_POSITION_TOKEN);
             short.burn(address(this), contrib);
@@ -258,21 +282,25 @@ contract MettalexContract {
     function updateSpot(uint price)
         public
     {
-        require(msg.sender == PRICE_UPDATE_ADDRESS, "ORACLE_ONLY");
+        require(msg.sender == ORACLE_ADDRESS, "ORACLE_ONLY");
         require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
         PRICE_SPOT = price;
         // MMcD 20204030: Deal with trade at settlement orders
-        // Currently only have single settlement event
+        // For each settlement event we store the total amount of position tokens crossed
+        // and the total value of the long and short positions 
         if ((totalLongToSettle > 0) && (totalShortToSettle > 0)) {
             if (totalLongToSettle >= totalShortToSettle) {
-                totalSettled = totalShortToSettle;
+                totalSettled[priceUpdateCount] = totalShortToSettle;
             } else {
-                totalSettled = totalLongToSettle;
+                totalSettled[priceUpdateCount] = totalLongToSettle;
             }
-            totalLongToSettle -= totalSettled;
-            totalShortToSettle -= totalSettled;
-            longSettledValue = PRICE_SPOT.sub(PRICE_FLOOR).mul(totalSettled).div(PRICE_CAP.sub(PRICE_FLOOR));
-            shortSettledValue = PRICE_CAP.sub(PRICE_SPOT).mul(totalSettled).div(PRICE_CAP.sub(PRICE_FLOOR));
+            totalLongToSettle = 0;  // -= totalSettled;
+            totalShortToSettle = 0;  // -= totalSettled;
+            longSettledValue[priceUpdateCount] = PRICE_SPOT.sub(
+                PRICE_FLOOR).mul(totalSettled[priceUpdateCount]).div(PRICE_CAP.sub(PRICE_FLOOR));
+            shortSettledValue[priceUpdateCount] = PRICE_CAP.sub(
+                PRICE_SPOT).mul(totalSettled[priceUpdateCount]).div(PRICE_CAP.sub(PRICE_FLOOR));
+            priceUpdateCount += 1;
             // redeemPositionTokens(address(this), totalSettled);
         }
     }
@@ -281,20 +309,22 @@ contract MettalexContract {
         public
     {
         require(msg.sender == owner, "OWNER_ONLY");
-        settlementTimeStamp = now;
-        settlementPrice = finalSettlementPrice;
-        emit ContractSettled(finalSettlementPrice);
+        revert("NOT_IMPLEMENTED");
+//        settlementTimeStamp = now;
+//        settlementPrice = finalSettlementPrice;
+//        emit ContractSettled(finalSettlementPrice);
     }
 
     function arbitrateSettlement(uint256 price)
         public
     {
         require(msg.sender == owner, "OWNER_ONLY");
-        require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
-        lastPrice = price;
-        emit UpdatedLastPrice(price);
-        settleContract(price);
-        isSettled = true;
+        revert("NOT_IMPLEMENTED");
+//        require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
+//        lastPrice = price;
+//        emit UpdatedLastPrice(price);
+//        settleContract(price);
+//        isSettled = true;
     }
 
     function settleAndClose(address, uint, uint) external {
