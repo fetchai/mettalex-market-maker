@@ -149,7 +149,7 @@ contract MettalexContract {
     }
 
     function redeemPositionTokens(
-        address to_address,
+        address to_address,  // Destination address for collateral redeemed
         uint qtyToRedeem
     )
         public
@@ -162,7 +162,18 @@ contract MettalexContract {
 
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
         uint collateralToReturn = COLLATERAL_PER_UNIT.mul(qtyToRedeem);
-        collateral.transfer(msg.sender, collateralToReturn);
+        // Destination address may not be the same as sender e.g. send to
+        // exchange wallet receive funds address
+        collateral.transfer(to_address, collateralToReturn);
+    }
+
+    // Overloaded method to redeem collateral to sender address
+    function redeemPositionTokens(
+        uint qtyToRedeem
+    )
+        public
+    {
+        redeemPositionTokens(msg.sender, qtyToRedeem);
     }
 
     // MMcD 20200430: New method to trade at settlement price on next spot price update
@@ -193,7 +204,7 @@ contract MettalexContract {
     function clearLongSettledTrade()
         external
     {
-        // 20200430 MMcD: Post TAS retrieve the collateral from settlement
+        // Post TAS retrieve the collateral from settlement
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
 
         if (longToSettle[msg.sender].addedQty > 0)
@@ -222,9 +233,7 @@ contract MettalexContract {
             // Transfer any uncrossed position tokens
             IERC20 long_t = IERC20(LONG_POSITION_TOKEN);
             long_t.transfer(msg.sender, excessQty);
-
-            IMintable long = IMintable(LONG_POSITION_TOKEN);
-            long.burn(address(this), contrib);
+            // Transfer reclaimed collateral
             collateral.transfer(msg.sender, collateralQty);
         }
     }
@@ -232,7 +241,7 @@ contract MettalexContract {
     function clearShortSettledTrade()
         external
     {
-        // 20200430 MMcD: Post TAS retrieve the collateral from settlement
+        // Post TAS retrieve the collateral from settlement
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
 
         if (shortToSettle[msg.sender].addedQty > 0)
@@ -262,9 +271,7 @@ contract MettalexContract {
             // Transfer any uncrossed position tokens
             IERC20 short_t = IERC20(SHORT_POSITION_TOKEN);
             short_t.transfer(msg.sender, excessQty);
-
-            IMintable short = IMintable(SHORT_POSITION_TOKEN);
-            short.burn(address(this), contrib);
+            // Transfer reclaimed collateral
             collateral.transfer(msg.sender, collateralQty);
         }
     }
@@ -285,23 +292,35 @@ contract MettalexContract {
         require(msg.sender == ORACLE_ADDRESS, "ORACLE_ONLY");
         require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
         PRICE_SPOT = price;
-        // MMcD 20204030: Deal with trade at settlement orders
+        // Deal with trade at settlement orders
         // For each settlement event we store the total amount of position tokens crossed
         // and the total value of the long and short positions 
         if ((totalLongToSettle > 0) && (totalShortToSettle > 0)) {
+            uint settled = 0;
             if (totalLongToSettle >= totalShortToSettle) {
-                totalSettled[priceUpdateCount] = totalShortToSettle;
+                settled = totalShortToSettle;
             } else {
-                totalSettled[priceUpdateCount] = totalLongToSettle;
+                settled = totalLongToSettle;
             }
-            totalLongToSettle = 0;  // -= totalSettled;
-            totalShortToSettle = 0;  // -= totalSettled;
+            // Clear per period variables that track running total
+            totalLongToSettle = 0;
+            totalShortToSettle = 0;
+            // Store position tokens settled amount and value going to long and short position
             longSettledValue[priceUpdateCount] = PRICE_SPOT.sub(
-                PRICE_FLOOR).mul(totalSettled[priceUpdateCount]).div(PRICE_CAP.sub(PRICE_FLOOR));
+                PRICE_FLOOR).mul(settled).div(PRICE_CAP.sub(PRICE_FLOOR));
             shortSettledValue[priceUpdateCount] = PRICE_CAP.sub(
-                PRICE_SPOT).mul(totalSettled[priceUpdateCount]).div(PRICE_CAP.sub(PRICE_FLOOR));
+                PRICE_SPOT).mul(settled).div(PRICE_CAP.sub(PRICE_FLOOR));
+            totalSettled[priceUpdateCount] = settled;
+
             priceUpdateCount += 1;
-            // redeemPositionTokens(address(this), totalSettled);
+
+            // Burn crossed tokens.  Backing collateral is held in this contract
+            // in the totalSettledValue[ind], longSettledValue[ind], shortSettledValue[ind]
+            // state variables
+            IMintable long = IMintable(LONG_POSITION_TOKEN);
+            IMintable short = IMintable(SHORT_POSITION_TOKEN);
+            long.burn(address(this), settled);
+            short.burn(address(this), settled);
         }
     }
 
