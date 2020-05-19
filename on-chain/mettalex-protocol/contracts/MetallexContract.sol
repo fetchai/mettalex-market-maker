@@ -108,7 +108,9 @@ contract MettalexContract {
     }
 
     function _clearSettledTrade(
-        SettlementOrder order,
+        uint settleInd,
+        uint initialQty,
+        uint addedQty,
         uint settledValue,
         address positionTokenType,
         address sender
@@ -118,22 +120,21 @@ contract MettalexContract {
         // Post TAS retrieve the collateral from settlement
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
 
-        if (order.addedQty > 0)
+        if (addedQty > 0)
         {
-            uint settleInd = order.index;
             require(settleInd < priceUpdateCount, "Can only clear previously settled order");
-            uint contrib = order.addedQty;
+            uint contrib = addedQty;
             uint excessQty = 0;
-            if ((contrib + order.initialQty) >= totalSettled[settleInd]) {
+            if ((contrib + initialQty) >= totalSettled[settleInd]) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
-                if (order.initialQty >= totalSettled[settleInd]) {
+                if (initialQty >= totalSettled[settleInd]) {
                     contrib = 0;
                 } else {
-                    contrib = totalSettled[settleInd] - order.initialQty;
+                    contrib = totalSettled[settleInd] - initialQty;
                 }
                 // Transfer any uncrossed position tokens
-                excessQty = order.addedQty - contrib;
+                excessQty = addedQty - contrib;
             }
 
             uint positionQty = contrib.mul(settledValue).div(totalSettled[settleInd]);
@@ -235,7 +236,14 @@ contract MettalexContract {
     function clearLongSettledTrade()
         external
     {
-        _clearSettledTrade(longToSettle[msg.sender], longSettledValue[longToSettle[msg.sender].index], LONG_POSITION_TOKEN, msg.sender);
+        _clearSettledTrade(
+            longToSettle[msg.sender].index,
+            longToSettle[msg.sender].addedQty,
+            longToSettle[msg.sender].initialQty,
+            longSettledValue[longToSettle[msg.sender].index],
+            LONG_POSITION_TOKEN,
+            msg.sender
+        );
         longToSettle[msg.sender].index = 0;
         longToSettle[msg.sender].addedQty = 0;
         longToSettle[msg.sender].initialQty = 0;
@@ -244,7 +252,14 @@ contract MettalexContract {
     function clearShortSettledTrade()
         external
     {
-        _clearSettledTrade(shortToSettle[msg.sender], shortSettledValue[shortToSettle[msg.sender].index], SHORT_POSITION_TOKEN, msg.sender);
+        _clearSettledTrade(
+            shortToSettle[msg.sender].index,
+            shortToSettle[msg.sender].addedQty,
+            shortToSettle[msg.sender].initialQty,
+            shortSettledValue[shortToSettle[msg.sender].index],
+            SHORT_POSITION_TOKEN,
+            msg.sender
+        );
         shortToSettle[msg.sender].index = 0;
         shortToSettle[msg.sender].addedQty = 0;
         shortToSettle[msg.sender].initialQty = 0;
