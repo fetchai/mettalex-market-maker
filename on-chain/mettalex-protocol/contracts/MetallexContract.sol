@@ -63,10 +63,15 @@ contract MettalexContract {
 
     mapping (address => bool) public contractWhitelist;
 
-    event Mint(address indexed to, uint value);
-    event Redeem(address indexed to, uint value);
-    event UpdatedLastPrice(uint256 price);
+    event Mint(address indexed to, uint value, uint collateralRequired, uint collateralFeeRequired);
+    event Redeem(address indexed to, uint value, uint collateralToReturn);
+    event UpdatedLastPrice(uint price);
     event ContractSettled(uint settlePrice);
+    event OrderedLongTAS(address indexed from, address token, uint qtyToTrade);
+    event OrderedShortTAS(address indexed from, address token, uint qtyToTrade);
+    event clearedLongSettledTrade(address indexed sender, uint settledValue, uint positionQuantity, uint collateralQuantity);
+    event clearedShortSettledTrade(address indexed sender, uint settledValue, uint positionQuantity, uint collateralQuantity);
+
 
     constructor(
         address collateralToken,
@@ -145,6 +150,12 @@ contract MettalexContract {
             token.transfer(sender, excessQty);
             // Transfer reclaimed collateral
             collateral.transfer(sender, collateralQty);
+
+            if (positionTokenType == LONG_POSITION_TOKEN) {
+                emit clearedLongSettledTrade(sender, settledValue, positionQty, collateralQty);
+            } else {
+                emit clearedShortSettledTrade(sender, settledValue, positionQty, collateralQty);
+            } 
         }
     }
 
@@ -178,6 +189,7 @@ contract MettalexContract {
         IMintable short = IMintable(SHORT_POSITION_TOKEN);
         long.mint(msg.sender, qtyToMint);
         short.mint(msg.sender, qtyToMint);
+        emit Mint(msg.sender, qtyToMint, collateralRequired, collateralFeeRequired);
     }
 
     function redeemPositionTokens(
@@ -197,6 +209,7 @@ contract MettalexContract {
         // Destination address may not be the same as sender e.g. send to
         // exchange wallet receive funds address
         collateral.transfer(to_address, collateralToReturn);
+        emit Redeem(to_address, qtyToRedeem, collateralToReturn);
     }
 
     // Overloaded method to redeem collateral to sender address
@@ -231,6 +244,12 @@ contract MettalexContract {
             totalShortToSettle += qtyToTrade;
         }
         position.transferFrom(msg.sender, address(this), qtyToTrade);
+
+        if (token == LONG_POSITION_TOKEN) {
+            emit OrderedLongTAS(msg.sender, token, qtyToTrade);
+        } else {
+            emit OrderedShortTAS(msg.sender, token, qtyToTrade);
+        }
     }
 
     function clearLongSettledTrade()
@@ -281,6 +300,7 @@ contract MettalexContract {
         require(msg.sender == ORACLE_ADDRESS, "ORACLE_ONLY");
         require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
         PRICE_SPOT = price;
+        emit UpdatedLastPrice(price);
         // Deal with trade at settlement orders
         // For each settlement event we store the total amount of position tokens crossed
         // and the total value of the long and short positions 
@@ -310,6 +330,7 @@ contract MettalexContract {
             IMintable short = IMintable(SHORT_POSITION_TOKEN);
             long.burn(address(this), settled);
             short.burn(address(this), settled);
+            emit ContractSettled(price);
         }
     }
 
