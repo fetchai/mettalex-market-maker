@@ -156,13 +156,11 @@ contract MettalexContract {
     }
 
     function mintPositionTokens(
-        address marketContractAddress,
-        uint qtyToMint,
-        bool // Unused, to remove - used to be payFeeInMkt
+        uint qtyToMint
     )
         external
     {
-        IMarketContract marketContract = IMarketContract(marketContractAddress);
+        IMarketContract marketContract = IMarketContract(address(this));
         require(!marketContract.isSettled(), "Contract is already settled");
 
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
