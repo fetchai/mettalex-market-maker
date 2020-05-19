@@ -52,6 +52,7 @@ contract MettalexContract {
     uint public lastPrice;
     uint public settlementPrice;
     uint public settlementTimeStamp;
+    // TO-DO: Check requirement on contract completion
     bool public isSettled = false;
 
     address public COLLATERAL_TOKEN_ADDRESS;
@@ -99,6 +100,11 @@ contract MettalexContract {
             div(100000);
 
         owner = msg.sender;
+    }
+
+    modifier onlyOwner {
+        require(msg.sender == owner, "OWNER_ONLY");
+        _;
     }
 
     function priceUpdater()
@@ -313,8 +319,8 @@ contract MettalexContract {
 
     function settleContract(uint finalSettlementPrice)
         public
+        onlyOwner
     {
-        require(msg.sender == owner, "OWNER_ONLY");
         revert("NOT_IMPLEMENTED");
 //        settlementTimeStamp = now;
 //        settlementPrice = finalSettlementPrice;
@@ -323,8 +329,8 @@ contract MettalexContract {
 
     function arbitrateSettlement(uint256 price)
         public
+        onlyOwner
     {
-        require(msg.sender == owner, "OWNER_ONLY");
         revert("NOT_IMPLEMENTED");
 //        require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
 //        lastPrice = price;
@@ -333,13 +339,11 @@ contract MettalexContract {
 //        isSettled = true;
     }
 
-    function settleAndClose(address, uint, uint) external {
-        require(msg.sender == owner, "OWNER_ONLY");
+    function settleAndClose(address, uint, uint) external onlyOwner{
         revert("NOT_IMPLEMENTED");
     }
 
-    function addAddressToWhiteList(address contractAddress) external {
-        require(msg.sender == owner, "OWNER_ONLY");
+    function addAddressToWhiteList(address contractAddress) external onlyOwner{
         contractWhitelist[contractAddress] = true;
     }
 }
