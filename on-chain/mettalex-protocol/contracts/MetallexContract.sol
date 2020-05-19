@@ -107,6 +107,46 @@ contract MettalexContract {
         _;
     }
 
+    function _clearSettledTrade(
+        SettlementOrder order,
+        uint settledValue,
+        address positionTokenType,
+        address sender
+    )
+        internal
+    {
+        // Post TAS retrieve the collateral from settlement
+        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
+
+        if (order.addedQty > 0)
+        {
+            uint settleInd = order.index;
+            require(settleInd < priceUpdateCount, "Can only clear previously settled order");
+            uint contrib = order.addedQty;
+            uint excessQty = 0;
+            if ((contrib + order.initialQty) >= totalSettled[settleInd]) {
+                // Cap the amount of collateral that can be reclaimed to the total
+                // settled in TAS auction
+                if (order.initialQty >= totalSettled[settleInd]) {
+                    contrib = 0;
+                } else {
+                    contrib = totalSettled[settleInd] - order.initialQty;
+                }
+                // Transfer any uncrossed position tokens
+                excessQty = order.addedQty - contrib;
+            }
+
+            uint positionQty = contrib.mul(settledValue).div(totalSettled[settleInd]);
+            uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
+
+            // Transfer any uncrossed position tokens
+            IERC20 token = IERC20(positionTokenType);
+            token.transfer(sender, excessQty);
+            // Transfer reclaimed collateral
+            collateral.transfer(sender, collateralQty);
+        }
+    }
+
     function priceUpdater()
         public
         view
@@ -197,76 +237,19 @@ contract MettalexContract {
     function clearLongSettledTrade()
         external
     {
-        // Post TAS retrieve the collateral from settlement
-        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
-
-        if (longToSettle[msg.sender].addedQty > 0)
-        {
-            uint settleInd = longToSettle[msg.sender].index;
-            require(settleInd < priceUpdateCount, "Can only clear previously settled order");
-            uint contrib = longToSettle[msg.sender].addedQty;
-            uint excessQty = 0;
-            if ((contrib + longToSettle[msg.sender].initialQty) >= totalSettled[settleInd]) {
-                // Cap the amount of collateral that can be reclaimed to the total
-                // settled in TAS auction
-                if (longToSettle[msg.sender].initialQty >= totalSettled[settleInd]) {
-                    contrib = 0;
-                } else {
-                    contrib = totalSettled[settleInd] - longToSettle[msg.sender].initialQty;
-                }
-                excessQty = longToSettle[msg.sender].addedQty - contrib;
-            }
-            longToSettle[msg.sender].index = 0;
-            longToSettle[msg.sender].addedQty = 0;
-            longToSettle[msg.sender].initialQty = 0;
-
-            uint positionQty = contrib.mul(longSettledValue[settleInd]).div(totalSettled[settleInd]);
-            uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
-
-            // Transfer any uncrossed position tokens
-            IERC20 long_t = IERC20(LONG_POSITION_TOKEN);
-            long_t.transfer(msg.sender, excessQty);
-            // Transfer reclaimed collateral
-            collateral.transfer(msg.sender, collateralQty);
-        }
+        _clearSettledTrade(longToSettle[msg.sender], longSettledValue[longToSettle[msg.sender].index], LONG_POSITION_TOKEN, msg.sender);
+        longToSettle[msg.sender].index = 0;
+        longToSettle[msg.sender].addedQty = 0;
+        longToSettle[msg.sender].initialQty = 0;
     }
 
     function clearShortSettledTrade()
         external
     {
-        // Post TAS retrieve the collateral from settlement
-        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
-
-        if (shortToSettle[msg.sender].addedQty > 0)
-        {
-            uint settleInd = shortToSettle[msg.sender].index;
-            require(settleInd < priceUpdateCount, "Can only clear previously settled order");
-            uint contrib = shortToSettle[msg.sender].addedQty;
-            uint excessQty = 0;
-            if ((contrib + shortToSettle[msg.sender].initialQty) >= totalSettled[settleInd]) {
-                // Cap the amount of collateral that can be reclaimed to the total
-                // settled in TAS auction
-                if (shortToSettle[msg.sender].initialQty >= totalSettled[settleInd]) {
-                    contrib = 0;
-                } else {
-                    contrib = totalSettled[settleInd] - shortToSettle[msg.sender].initialQty;
-                }
-                // Transfer any uncrossed position tokens
-                excessQty = shortToSettle[msg.sender].addedQty - contrib;
-            }
-            shortToSettle[msg.sender].index = 0;
-            shortToSettle[msg.sender].addedQty = 0;
-            shortToSettle[msg.sender].initialQty = 0;
-
-            uint positionQty = contrib.mul(shortSettledValue[settleInd]).div(totalSettled[settleInd]);
-            uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
-
-            // Transfer any uncrossed position tokens
-            IERC20 short_t = IERC20(SHORT_POSITION_TOKEN);
-            short_t.transfer(msg.sender, excessQty);
-            // Transfer reclaimed collateral
-            collateral.transfer(msg.sender, collateralQty);
-        }
+        _clearSettledTrade(shortToSettle[msg.sender], shortSettledValue[shortToSettle[msg.sender].index], SHORT_POSITION_TOKEN, msg.sender);
+        shortToSettle[msg.sender].index = 0;
+        shortToSettle[msg.sender].addedQty = 0;
+        shortToSettle[msg.sender].initialQty = 0;
     }
 
     function isAddressWhiteListed(address contractAddress)
