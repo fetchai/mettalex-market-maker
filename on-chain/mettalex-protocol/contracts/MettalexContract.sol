@@ -114,10 +114,9 @@ contract MettalexContract {
             mul(multiplier);
         COLLATERAL_TOKEN_FEE_PER_UNIT = cap.
             add(floor).
-            div(2).
             mul(multiplier).
             mul(feeRate).
-            div(100000);
+            div(200000);
 
         owner = msg.sender;
     }
