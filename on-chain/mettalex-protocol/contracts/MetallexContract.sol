@@ -24,8 +24,8 @@ contract MettalexContract {
         uint initialQty;
         uint addedQty;
     }
-    mapping (address => SettlementOrder) longToSettle;
-    mapping (address => SettlementOrder) shortToSettle;
+    mapping(address => SettlementOrder) longToSettle;
+    mapping(address => SettlementOrder) shortToSettle;
 
     // State variables that are cleared after each price update
     // These keep track of total long and short trade at settlement orders 
@@ -61,16 +61,31 @@ contract MettalexContract {
     address public SHORT_POSITION_TOKEN;
     address public ORACLE_ADDRESS;
 
-    mapping (address => bool) public contractWhitelist;
+    mapping(address => bool) public contractWhitelist;
 
-    event Mint(address indexed to, uint value, uint collateralRequired, uint collateralFeeRequired);
+    event Mint(
+        address indexed to,
+        uint value,
+        uint collateralRequired,
+        uint collateralFeeRequired
+    );
     event Redeem(address indexed to, uint value, uint collateralToReturn);
     event UpdatedLastPrice(uint price);
     event ContractSettled(uint settlePrice);
     event OrderedLongTAS(address indexed from, address token, uint qtyToTrade);
     event OrderedShortTAS(address indexed from, address token, uint qtyToTrade);
-    event clearedLongSettledTrade(address indexed sender, uint settledValue, uint positionQuantity, uint collateralQuantity);
-    event clearedShortSettledTrade(address indexed sender, uint settledValue, uint positionQuantity, uint collateralQuantity);
+    event ClearedLongSettledTrade(
+        address indexed sender,
+        uint settledValue,
+        uint positionQuantity,
+        uint collateralQuantity
+    );
+    event ClearedShortSettledTrade(
+        address indexed sender,
+        uint settledValue,
+        uint positionQuantity,
+        uint collateralQuantity
+    );
 
 
     constructor(
@@ -152,9 +167,9 @@ contract MettalexContract {
             collateral.transfer(sender, collateralQty);
 
             if (positionTokenType == LONG_POSITION_TOKEN) {
-                emit clearedLongSettledTrade(sender, settledValue, positionQty, collateralQty);
+                emit ClearedLongSettledTrade(sender, settledValue, positionQty, collateralQty);
             } else {
-                emit clearedShortSettledTrade(sender, settledValue, positionQty, collateralQty);
+                emit ClearedShortSettledTrade(sender, settledValue, positionQty, collateralQty);
             } 
         }
     }
@@ -298,7 +313,10 @@ contract MettalexContract {
         public
     {
         require(msg.sender == ORACLE_ADDRESS, "ORACLE_ONLY");
-        require(price >= PRICE_FLOOR && price <= PRICE_CAP, "arbitration price must be within contract bounds");
+        require(
+            price >= PRICE_FLOOR && price <= PRICE_CAP,
+            "arbitration price must be within contract bounds"
+        );
         PRICE_SPOT = price;
         emit UpdatedLastPrice(price);
         // Deal with trade at settlement orders
@@ -356,11 +374,17 @@ contract MettalexContract {
 //        isSettled = true;
     }
 
-    function settleAndClose(address, uint, uint) external onlyOwner{
+    function settleAndClose(address, uint, uint)
+        external
+        onlyOwner
+    {
         revert("NOT_IMPLEMENTED");
     }
 
-    function addAddressToWhiteList(address contractAddress) external onlyOwner{
+    function addAddressToWhiteList(address contractAddress)
+        external
+        onlyOwner
+    {
         contractWhitelist[contractAddress] = true;
     }
 }
