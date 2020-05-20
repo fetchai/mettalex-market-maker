@@ -15,7 +15,7 @@ contract MettalexContract {
     string public CONTRACT_NAME = "Mettalex";
 
     uint public PRICE_SPOT;  // MMcD 20200430: Addition to interface to allow admin to set pricing
-    address owner;
+    address internal owner;
 
     // Trade At Settlement: keep track of cumulative tokens on each side
     // and partition settlement amount based on (addedQty - initialQty)/totalSettled
@@ -24,24 +24,24 @@ contract MettalexContract {
         uint initialQty;
         uint addedQty;
     }
-    mapping(address => SettlementOrder) longToSettle;
-    mapping(address => SettlementOrder) shortToSettle;
+    mapping(address => SettlementOrder) internal longToSettle;
+    mapping(address => SettlementOrder) internal shortToSettle;
 
     // State variables that are cleared after each price update
     // These keep track of total long and short trade at settlement orders 
     // that have been submitted
-    uint totalLongToSettle;
-    uint totalShortToSettle;
+    uint internal totalLongToSettle;
+    uint internal totalShortToSettle;
 
     // Running count of number of price updates
-    uint priceUpdateCount;
+    uint internal priceUpdateCount;
     
     // For each price update we store the total amount of position tokens that have been
     // settled using time at settlement orders, and the proportion of total value that 
     // goes to long and short positions.
-    mapping(uint => uint) totalSettled;
-    mapping(uint => uint) longSettledValue;
-    mapping(uint => uint) shortSettledValue;
+    mapping(uint => uint) internal totalSettled;
+    mapping(uint => uint) internal longSettledValue;
+    mapping(uint => uint) internal shortSettledValue;
 
     uint public PRICE_CAP;
     uint public PRICE_FLOOR;
