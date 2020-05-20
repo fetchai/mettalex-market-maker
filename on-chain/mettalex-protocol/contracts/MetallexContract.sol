@@ -144,7 +144,7 @@ contract MettalexContract {
         {
             require(settleInd < priceUpdateCount, "Can only clear previously settled order");
             uint contrib = addedQty;
-            uint excessQty = 0;
+            uint excessQty;
             if ((contrib + initialQty) >= totalSettled[settleInd]) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
@@ -323,7 +323,7 @@ contract MettalexContract {
         // For each settlement event we store the total amount of position tokens crossed
         // and the total value of the long and short positions 
         if ((totalLongToSettle > 0) && (totalShortToSettle > 0)) {
-            uint settled = 0;
+            uint settled;
             if (totalLongToSettle >= totalShortToSettle) {
                 settled = totalShortToSettle;
             } else {
