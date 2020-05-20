@@ -18,11 +18,11 @@ contract MettalexContract {
     address internal owner;
 
     // Trade At Settlement: keep track of cumulative tokens on each side
-    // and partition settlement amount based on (addedQty - initialQty)/totalSettled
+    // and partition settlement amount based on (addedQuantity - initialQuantity)/totalSettled
     struct SettlementOrder {
         uint index;
-        uint initialQty;
-        uint addedQty;
+        uint initialQuantity;
+        uint addedQuantity;
     }
     mapping(address => SettlementOrder) internal longToSettle;
     mapping(address => SettlementOrder) internal shortToSettle;
@@ -72,8 +72,8 @@ contract MettalexContract {
     event Redeem(address indexed to, uint value, uint collateralToReturn);
     event UpdatedLastPrice(uint price);
     event ContractSettled(uint settlePrice);
-    event OrderedLongTAS(address indexed from, address token, uint qtyToTrade);
-    event OrderedShortTAS(address indexed from, address token, uint qtyToTrade);
+    event OrderedLongTAS(address indexed from, address token, uint quantityToTrade);
+    event OrderedShortTAS(address indexed from, address token, uint quantityToTrade);
     event ClearedLongSettledTrade(
         address indexed sender,
         uint settledValue,
@@ -128,9 +128,9 @@ contract MettalexContract {
     }
 
     function _clearSettledTrade(
-        uint settleInd,
-        uint initialQty,
-        uint addedQty,
+        uint settleIndex,
+        uint initialQuantity,
+        uint addedQuantity,
         uint settledValue,
         address positionTokenType,
         address sender
@@ -140,36 +140,46 @@ contract MettalexContract {
         // Post TAS retrieve the collateral from settlement
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
 
-        if (addedQty > 0)
+        if (addedQuantity > 0)
         {
-            require(settleInd < priceUpdateCount, "Can only clear previously settled order");
-            uint contrib = addedQty;
-            uint excessQty;
-            if ((contrib + initialQty) >= totalSettled[settleInd]) {
+            require(settleIndex < priceUpdateCount, "Can only clear previously settled order");
+            uint contribution = addedQuantity;
+            uint excessQuantity;
+            if ((contribution + initialQuantity) >= totalSettled[settleIndex]) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
-                if (initialQty >= totalSettled[settleInd]) {
-                    contrib = 0;
+                if (initialQuantity >= totalSettled[settleIndex]) {
+                    contribution = 0;
                 } else {
-                    contrib = totalSettled[settleInd] - initialQty;
+                    contribution = totalSettled[settleIndex] - initialQuantity;
                 }
                 // Transfer any uncrossed position tokens
-                excessQty = addedQty - contrib;
+                excessQuantity = addedQuantity - contribution;
             }
 
-            uint positionQty = contrib.mul(settledValue).div(totalSettled[settleInd]);
-            uint collateralQty = COLLATERAL_PER_UNIT.mul(positionQty);
+            uint positionQuantity = contribution.mul(settledValue).div(totalSettled[settleIndex]);
+            uint collateralQuantity = COLLATERAL_PER_UNIT.mul(positionQuantity);
 
             // Transfer any uncrossed position tokens
             IERC20 token = IERC20(positionTokenType);
-            token.transfer(sender, excessQty);
+            token.transfer(sender, excessQuantity);
             // Transfer reclaimed collateral
-            collateral.transfer(sender, collateralQty);
+            collateral.transfer(sender, collateralQuantity);
 
             if (positionTokenType == LONG_POSITION_TOKEN) {
-                emit ClearedLongSettledTrade(sender, settledValue, positionQty, collateralQty);
+                emit ClearedLongSettledTrade(
+                    sender,
+                    settledValue,
+                    positionQuantity,
+                    collateralQuantity
+                );
             } else {
-                emit ClearedShortSettledTrade(sender, settledValue, positionQty, collateralQty);
+                emit ClearedShortSettledTrade(
+                    sender,
+                    settledValue,
+                    positionQuantity,
+                    collateralQuantity
+                );
             } 
         }
     }
@@ -183,7 +193,7 @@ contract MettalexContract {
     }
 
     function mintPositionTokens(
-        uint qtyToMint
+        uint quantityToMint
     )
         external
     {
@@ -191,9 +201,9 @@ contract MettalexContract {
         require(!marketContract.isSettled(), "Contract is already settled");
 
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
-        uint collateralRequired = COLLATERAL_PER_UNIT.mul(qtyToMint);
+        uint collateralRequired = COLLATERAL_PER_UNIT.mul(quantityToMint);
 
-        uint collateralFeeRequired = COLLATERAL_TOKEN_FEE_PER_UNIT.mul(qtyToMint);
+        uint collateralFeeRequired = COLLATERAL_TOKEN_FEE_PER_UNIT.mul(quantityToMint);
         collateral.transferFrom(
             msg.sender,
             address(this),
@@ -202,68 +212,72 @@ contract MettalexContract {
 
         IMintable long = IMintable(LONG_POSITION_TOKEN);
         IMintable short = IMintable(SHORT_POSITION_TOKEN);
-        long.mint(msg.sender, qtyToMint);
-        short.mint(msg.sender, qtyToMint);
-        emit Mint(msg.sender, qtyToMint, collateralRequired, collateralFeeRequired);
+        long.mint(msg.sender, quantityToMint);
+        short.mint(msg.sender, quantityToMint);
+        emit Mint(msg.sender, quantityToMint, collateralRequired, collateralFeeRequired);
     }
 
     function redeemPositionTokens(
         address to_address,  // Destination address for collateral redeemed
-        uint qtyToRedeem
+        uint quantityToRedeem
     )
         public
     {
         IMintable long = IMintable(LONG_POSITION_TOKEN);
         IMintable short = IMintable(SHORT_POSITION_TOKEN);
 
-        long.burn(msg.sender, qtyToRedeem);
-        short.burn(msg.sender, qtyToRedeem);
+        long.burn(msg.sender, quantityToRedeem);
+        short.burn(msg.sender, quantityToRedeem);
 
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
-        uint collateralToReturn = COLLATERAL_PER_UNIT.mul(qtyToRedeem);
+        uint collateralToReturn = COLLATERAL_PER_UNIT.mul(quantityToRedeem);
         // Destination address may not be the same as sender e.g. send to
         // exchange wallet receive funds address
         collateral.transfer(to_address, collateralToReturn);
-        emit Redeem(to_address, qtyToRedeem, collateralToReturn);
+        emit Redeem(to_address, quantityToRedeem, collateralToReturn);
     }
 
     // Overloaded method to redeem collateral to sender address
     function redeemPositionTokens(
-        uint qtyToRedeem
+        uint quantityToRedeem
     )
         public
     {
-        redeemPositionTokens(msg.sender, qtyToRedeem);
+        redeemPositionTokens(msg.sender, quantityToRedeem);
     }
 
     // MMcD 20200430: New method to trade at settlement price on next spot price update
     function tradeAtSettlement(
         address token,
-        uint qtyToTrade
+        uint quantityToTrade
     )
         public
     {
         require((token == LONG_POSITION_TOKEN) || (token == SHORT_POSITION_TOKEN));
         IERC20 position = IERC20(token);
         if (token == LONG_POSITION_TOKEN) {
-            require(longToSettle[msg.sender].addedQty == 0, "Single TAS order allowed" );
-            longToSettle[msg.sender] = SettlementOrder(
-                {index: priceUpdateCount, initialQty: totalLongToSettle, addedQty: qtyToTrade}
-            );
-            totalLongToSettle += qtyToTrade;
+            require(longToSettle[msg.sender].addedQuantity == 0, "Single TAS order allowed" );
+            longToSettle[msg.sender] = SettlementOrder({
+                index: priceUpdateCount,
+                initialQuantity: totalLongToSettle,
+                addedQuantity: quantityToTrade
+            });
+            totalLongToSettle += quantityToTrade;
         } else {
-            require(shortToSettle[msg.sender].addedQty == 0, "Single TAS order allowed" );
-            shortToSettle[msg.sender] = SettlementOrder(
-                {index: priceUpdateCount, initialQty: totalShortToSettle, addedQty: qtyToTrade}
-            );
-            totalShortToSettle += qtyToTrade;
+            require(shortToSettle[msg.sender].addedQuantity == 0, "Single TAS order allowed" );
+            shortToSettle[msg.sender] = SettlementOrder({
+                index: priceUpdateCount,
+                initialQuantity: totalShortToSettle,
+                addedQuantity: quantityToTrade
+            });
+            totalShortToSettle += quantityToTrade;
         }
-        position.transferFrom(msg.sender, address(this), qtyToTrade);
+        position.transferFrom(msg.sender, address(this), quantityToTrade);
 
         if (token == LONG_POSITION_TOKEN) {
-            emit OrderedLongTAS(msg.sender, token, qtyToTrade);
+            emit OrderedLongTAS(msg.sender, token, quantityToTrade);
         } else {
-            emit OrderedShortTAS(msg.sender, token, qtyToTrade);
+            emit OrderedShortTAS(msg.sender, token, quantityToTrade);
         }
     }
 
@@ -272,15 +286,15 @@ contract MettalexContract {
     {
         _clearSettledTrade(
             longToSettle[msg.sender].index,
-            longToSettle[msg.sender].addedQty,
-            longToSettle[msg.sender].initialQty,
+            longToSettle[msg.sender].addedQuantity,
+            longToSettle[msg.sender].initialQuantity,
             longSettledValue[longToSettle[msg.sender].index],
             LONG_POSITION_TOKEN,
             msg.sender
         );
         longToSettle[msg.sender].index = 0;
-        longToSettle[msg.sender].addedQty = 0;
-        longToSettle[msg.sender].initialQty = 0;
+        longToSettle[msg.sender].addedQuantity = 0;
+        longToSettle[msg.sender].initialQuantity = 0;
     }
 
     function clearShortSettledTrade()
@@ -288,15 +302,15 @@ contract MettalexContract {
     {
         _clearSettledTrade(
             shortToSettle[msg.sender].index,
-            shortToSettle[msg.sender].addedQty,
-            shortToSettle[msg.sender].initialQty,
+            shortToSettle[msg.sender].addedQuantity,
+            shortToSettle[msg.sender].initialQuantity,
             shortSettledValue[shortToSettle[msg.sender].index],
             SHORT_POSITION_TOKEN,
             msg.sender
         );
         shortToSettle[msg.sender].index = 0;
-        shortToSettle[msg.sender].addedQty = 0;
-        shortToSettle[msg.sender].initialQty = 0;
+        shortToSettle[msg.sender].addedQuantity = 0;
+        shortToSettle[msg.sender].initialQuantity = 0;
     }
 
     function isAddressWhiteListed(address contractAddress)
