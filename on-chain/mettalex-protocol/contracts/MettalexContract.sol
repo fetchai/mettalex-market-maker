@@ -184,7 +184,7 @@ contract MettalexContract {
     }
 
     function priceUpdater()
-        public
+        external
         view
         returns (address)
     {
@@ -250,7 +250,7 @@ contract MettalexContract {
         address token,
         uint quantityToTrade
     )
-        public
+        external
     {
         require((token == LONG_POSITION_TOKEN) || (token == SHORT_POSITION_TOKEN));
         IERC20 position = IERC20(token);
@@ -323,7 +323,7 @@ contract MettalexContract {
     // Privileged methods: owner only
 
     function updateSpot(uint price)
-        public
+        external
     {
         require(msg.sender == ORACLE_ADDRESS, "ORACLE_ONLY");
         require(
@@ -366,7 +366,7 @@ contract MettalexContract {
     }
 
     function settleContract(uint finalSettlementPrice)
-        public
+        external
         onlyOwner
     {
         revert("NOT_IMPLEMENTED");
@@ -376,7 +376,7 @@ contract MettalexContract {
     }
 
     function arbitrateSettlement(uint256 price)
-        public
+        external
         onlyOwner
     {
         revert("NOT_IMPLEMENTED");
