@@ -63,26 +63,46 @@ contract MettalexContract {
 
     mapping(address => bool) public contractWhitelist;
 
-    event Mint(
+    event LongPositionTokenMinted(
         address indexed to,
         uint value,
         uint collateralRequired,
         uint collateralFeeRequired
     );
-    event Redeem(address indexed to, uint value, uint collateralToReturn);
+    event ShortPositionTokenMinted(
+        address indexed to,
+        uint value,
+        uint collateralRequired,
+        uint collateralFeeRequired
+    );
+    event Redeem(address indexed to, uint burntTokenQuantity, uint collateralToReturn);
     event UpdatedLastPrice(uint price);
     event ContractSettled(uint settlePrice);
-    event OrderedLongTAS(address indexed from, address token, uint quantityToTrade);
-    event OrderedShortTAS(address indexed from, address token, uint quantityToTrade);
+    event OrderedLongTAS(
+        address indexed from,
+        uint orderIndex,
+        uint initialTotalLongToSettle,
+        uint quantityToTrade
+    );
+    event OrderedShortTAS(
+        address indexed from,
+        uint orderIndex,
+        uint initialTotalLongToSettle,
+        uint quantityToTrade
+    );
     event ClearedLongSettledTrade(
         address indexed sender,
         uint settledValue,
+        uint senderContribution,
+        uint senderExcess,
         uint positionQuantity,
         uint collateralQuantity
     );
     event ClearedShortSettledTrade(
         address indexed sender,
         uint settledValue,
+        uint senderContribution,
+        uint senderExcess,
         uint positionQuantity,
         uint collateralQuantity
     );
@@ -134,7 +154,7 @@ contract MettalexContract {
         address positionTokenType,
         address sender
     )
-        internal
+        private
     {
         // Post TAS retrieve the collateral from settlement
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
@@ -166,20 +186,32 @@ contract MettalexContract {
             collateral.transfer(sender, collateralQuantity);
 
             if (positionTokenType == LONG_POSITION_TOKEN) {
+                longToSettle[msg.sender].index = 0;
+                longToSettle[msg.sender].addedQuantity = 0;
+                longToSettle[msg.sender].initialQuantity = 0;
+
                 emit ClearedLongSettledTrade(
                     sender,
                     settledValue,
+                    contribution,
+                    excessQuantity,
                     positionQuantity,
                     collateralQuantity
                 );
             } else {
+                shortToSettle[msg.sender].index = 0;
+                shortToSettle[msg.sender].addedQuantity = 0;
+                shortToSettle[msg.sender].initialQuantity = 0;
+
                 emit ClearedShortSettledTrade(
                     sender,
                     settledValue,
+                    contribution,
+                    excessQuantity,
                     positionQuantity,
                     collateralQuantity
                 );
-            } 
+            }
         }
     }
 
@@ -212,8 +244,9 @@ contract MettalexContract {
         IMintable long = IMintable(LONG_POSITION_TOKEN);
         IMintable short = IMintable(SHORT_POSITION_TOKEN);
         long.mint(msg.sender, quantityToMint);
+        emit LongPositionTokenMinted(msg.sender, quantityToMint, collateralRequired, collateralFeeRequired);
         short.mint(msg.sender, quantityToMint);
-        emit Mint(msg.sender, quantityToMint, collateralRequired, collateralFeeRequired);
+        emit ShortPositionTokenMinted(msg.sender, quantityToMint, collateralRequired, collateralFeeRequired);
     }
 
     function redeemPositionTokens(
@@ -274,9 +307,9 @@ contract MettalexContract {
         position.transferFrom(msg.sender, address(this), quantityToTrade);
 
         if (token == LONG_POSITION_TOKEN) {
-            emit OrderedLongTAS(msg.sender, token, quantityToTrade);
+            emit OrderedLongTAS(msg.sender, priceUpdateCount, totalLongToSettle - quantityToTrade, quantityToTrade);
         } else {
-            emit OrderedShortTAS(msg.sender, token, quantityToTrade);
+            emit OrderedShortTAS(msg.sender, priceUpdateCount, totalLongToSettle - quantityToTrade, quantityToTrade);
         }
     }
 
@@ -291,9 +324,6 @@ contract MettalexContract {
             LONG_POSITION_TOKEN,
             msg.sender
         );
-        longToSettle[msg.sender].index = 0;
-        longToSettle[msg.sender].addedQuantity = 0;
-        longToSettle[msg.sender].initialQuantity = 0;
     }
 
     function clearShortSettledTrade()
@@ -307,9 +337,6 @@ contract MettalexContract {
             SHORT_POSITION_TOKEN,
             msg.sender
         );
-        shortToSettle[msg.sender].index = 0;
-        shortToSettle[msg.sender].addedQuantity = 0;
-        shortToSettle[msg.sender].initialQuantity = 0;
     }
 
     function isAddressWhiteListed(address contractAddress)
@@ -331,7 +358,6 @@ contract MettalexContract {
             "arbitration price must be within contract bounds"
         );
         PRICE_SPOT = price;
-        emit UpdatedLastPrice(price);
         // Deal with trade at settlement orders
         // For each settlement event we store the total amount of position tokens crossed
         // and the total value of the long and short positions 
@@ -361,8 +387,8 @@ contract MettalexContract {
             IMintable short = IMintable(SHORT_POSITION_TOKEN);
             long.burn(address(this), settled);
             short.burn(address(this), settled);
-            emit ContractSettled(price);
         }
+        emit UpdatedLastPrice(price);
     }
 
     function settleContract(uint finalSettlementPrice)
