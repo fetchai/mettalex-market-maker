@@ -163,7 +163,7 @@ contract MettalexContract {
         {
             require(settleIndex < priceUpdateCount, "Can only clear previously settled order");
             uint contribution = addedQuantity;
-            uint excessQuantity;
+            uint excessQuantity = 0;
             if ((contribution + initialQuantity) >= totalSettled[settleIndex]) {
                 // Cap the amount of collateral that can be reclaimed to the total
                 // settled in TAS auction
@@ -176,6 +176,16 @@ contract MettalexContract {
                 excessQuantity = addedQuantity - contribution;
             }
 
+            if (positionTokenType == LONG_POSITION_TOKEN) {
+                longToSettle[msg.sender].index = 0;
+                longToSettle[msg.sender].addedQuantity = 0;
+                longToSettle[msg.sender].initialQuantity = 0;
+            } else {
+                shortToSettle[msg.sender].index = 0;
+                shortToSettle[msg.sender].addedQuantity = 0;
+                shortToSettle[msg.sender].initialQuantity = 0;
+            }
+
             uint positionQuantity = contribution.mul(settledValue).div(totalSettled[settleIndex]);
             uint collateralQuantity = COLLATERAL_PER_UNIT.mul(positionQuantity);
 
@@ -186,10 +196,6 @@ contract MettalexContract {
             collateral.transfer(sender, collateralQuantity);
 
             if (positionTokenType == LONG_POSITION_TOKEN) {
-                longToSettle[msg.sender].index = 0;
-                longToSettle[msg.sender].addedQuantity = 0;
-                longToSettle[msg.sender].initialQuantity = 0;
-
                 emit ClearedLongSettledTrade(
                     sender,
                     settledValue,
@@ -199,10 +205,6 @@ contract MettalexContract {
                     collateralQuantity
                 );
             } else {
-                shortToSettle[msg.sender].index = 0;
-                shortToSettle[msg.sender].addedQuantity = 0;
-                shortToSettle[msg.sender].initialQuantity = 0;
-
                 emit ClearedShortSettledTrade(
                     sender,
                     settledValue,
@@ -365,7 +367,7 @@ contract MettalexContract {
         // For each settlement event we store the total amount of position tokens crossed
         // and the total value of the long and short positions 
         if ((totalLongToSettle > 0) && (totalShortToSettle > 0)) {
-            uint settled;
+            uint settled = 0;
             if (totalLongToSettle >= totalShortToSettle) {
                 settled = totalShortToSettle;
             } else {
