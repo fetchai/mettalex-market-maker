@@ -146,85 +146,6 @@ contract MettalexContract {
         _;
     }
 
-    function _clearSettledTrade(
-        uint settleIndex,
-        uint initialQuantity,
-        uint addedQuantity,
-        uint settledValue,
-        address positionTokenType,
-        address sender
-    )
-        private
-    {
-        // Post TAS retrieve the collateral from settlement
-        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
-
-        if (addedQuantity > 0)
-        {
-            require(settleIndex < priceUpdateCount, "Can only clear previously settled order");
-            uint contribution = addedQuantity;
-            uint excessQuantity = 0;
-            if ((contribution + initialQuantity) >= totalSettled[settleIndex]) {
-                // Cap the amount of collateral that can be reclaimed to the total
-                // settled in TAS auction
-                if (initialQuantity >= totalSettled[settleIndex]) {
-                    contribution = 0;
-                } else {
-                    contribution = totalSettled[settleIndex] - initialQuantity;
-                }
-                // Transfer any uncrossed position tokens
-                excessQuantity = addedQuantity - contribution;
-            }
-
-            if (positionTokenType == LONG_POSITION_TOKEN) {
-                longToSettle[msg.sender].index = 0;
-                longToSettle[msg.sender].addedQuantity = 0;
-                longToSettle[msg.sender].initialQuantity = 0;
-            } else {
-                shortToSettle[msg.sender].index = 0;
-                shortToSettle[msg.sender].addedQuantity = 0;
-                shortToSettle[msg.sender].initialQuantity = 0;
-            }
-
-            uint positionQuantity = contribution.mul(settledValue).div(totalSettled[settleIndex]);
-            uint collateralQuantity = COLLATERAL_PER_UNIT.mul(positionQuantity);
-
-            // Transfer any uncrossed position tokens
-            IERC20 token = IERC20(positionTokenType);
-            token.transfer(sender, excessQuantity);
-            // Transfer reclaimed collateral
-            collateral.transfer(sender, collateralQuantity);
-
-            if (positionTokenType == LONG_POSITION_TOKEN) {
-                emit ClearedLongSettledTrade(
-                    sender,
-                    settledValue,
-                    contribution,
-                    excessQuantity,
-                    positionQuantity,
-                    collateralQuantity
-                );
-            } else {
-                emit ClearedShortSettledTrade(
-                    sender,
-                    settledValue,
-                    contribution,
-                    excessQuantity,
-                    positionQuantity,
-                    collateralQuantity
-                );
-            }
-        }
-    }
-
-    function priceUpdater()
-        external
-        view
-        returns (address)
-    {
-        return ORACLE_ADDRESS;
-    }
-
     function mintPositionTokens(
         uint quantityToMint
     )
@@ -249,35 +170,6 @@ contract MettalexContract {
         emit LongPositionTokenMinted(msg.sender, quantityToMint, collateralRequired, collateralFeeRequired);
         short.mint(msg.sender, quantityToMint);
         emit ShortPositionTokenMinted(msg.sender, quantityToMint, collateralRequired, collateralFeeRequired);
-    }
-
-    function redeemPositionTokens(
-        address to_address,  // Destination address for collateral redeemed
-        uint quantityToRedeem
-    )
-        public
-    {
-        IMintable long = IMintable(LONG_POSITION_TOKEN);
-        IMintable short = IMintable(SHORT_POSITION_TOKEN);
-
-        long.burn(msg.sender, quantityToRedeem);
-        short.burn(msg.sender, quantityToRedeem);
-
-        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
-        uint collateralToReturn = COLLATERAL_PER_UNIT.mul(quantityToRedeem);
-        // Destination address may not be the same as sender e.g. send to
-        // exchange wallet receive funds address
-        collateral.transfer(to_address, collateralToReturn);
-        emit Redeem(to_address, quantityToRedeem, collateralToReturn);
-    }
-
-    // Overloaded method to redeem collateral to sender address
-    function redeemPositionTokens(
-        uint quantityToRedeem
-    )
-        public
-    {
-        redeemPositionTokens(msg.sender, quantityToRedeem);
     }
 
     // MMcD 20200430: New method to trade at settlement price on next spot price update
@@ -343,16 +235,6 @@ contract MettalexContract {
             msg.sender
         );
     }
-
-    function isAddressWhiteListed(address contractAddress)
-        external
-        view
-        returns (bool)
-    {
-        return contractWhitelist[contractAddress];
-    }
-
-    // Privileged methods: owner only
 
     function updateSpot(uint price)
         external
@@ -430,5 +312,122 @@ contract MettalexContract {
         onlyOwner
     {
         contractWhitelist[contractAddress] = true;
+    }
+
+    function priceUpdater()
+        external
+        view
+        returns (address)
+    {
+        return ORACLE_ADDRESS;
+    }
+    
+
+    function isAddressWhiteListed(address contractAddress)
+        external
+        view
+        returns (bool)
+    {
+        return contractWhitelist[contractAddress];
+    }
+
+    function redeemPositionTokens(
+        address to_address,  // Destination address for collateral redeemed
+        uint quantityToRedeem
+    )
+        public
+    {
+        IMintable long = IMintable(LONG_POSITION_TOKEN);
+        IMintable short = IMintable(SHORT_POSITION_TOKEN);
+
+        long.burn(msg.sender, quantityToRedeem);
+        short.burn(msg.sender, quantityToRedeem);
+
+        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
+        uint collateralToReturn = COLLATERAL_PER_UNIT.mul(quantityToRedeem);
+        // Destination address may not be the same as sender e.g. send to
+        // exchange wallet receive funds address
+        collateral.transfer(to_address, collateralToReturn);
+        emit Redeem(to_address, quantityToRedeem, collateralToReturn);
+    }
+
+    // Overloaded method to redeem collateral to sender address
+    function redeemPositionTokens(
+        uint quantityToRedeem
+    )
+        public
+    {
+        redeemPositionTokens(msg.sender, quantityToRedeem);
+    }
+
+    function _clearSettledTrade(
+        uint settleIndex,
+        uint initialQuantity,
+        uint addedQuantity,
+        uint settledValue,
+        address positionTokenType,
+        address sender
+    )
+        private
+    {
+        // Post TAS retrieve the collateral from settlement
+        IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
+
+        if (addedQuantity > 0)
+        {
+            require(settleIndex < priceUpdateCount, "Can only clear previously settled order");
+            uint contribution = addedQuantity;
+            uint excessQuantity = 0;
+            if ((contribution + initialQuantity) >= totalSettled[settleIndex]) {
+                // Cap the amount of collateral that can be reclaimed to the total
+                // settled in TAS auction
+                if (initialQuantity >= totalSettled[settleIndex]) {
+                    contribution = 0;
+                } else {
+                    contribution = totalSettled[settleIndex] - initialQuantity;
+                }
+                // Transfer any uncrossed position tokens
+                excessQuantity = addedQuantity - contribution;
+            }
+
+            if (positionTokenType == LONG_POSITION_TOKEN) {
+                longToSettle[msg.sender].index = 0;
+                longToSettle[msg.sender].addedQuantity = 0;
+                longToSettle[msg.sender].initialQuantity = 0;
+            } else {
+                shortToSettle[msg.sender].index = 0;
+                shortToSettle[msg.sender].addedQuantity = 0;
+                shortToSettle[msg.sender].initialQuantity = 0;
+            }
+
+            uint positionQuantity = contribution.mul(settledValue).div(totalSettled[settleIndex]);
+            uint collateralQuantity = COLLATERAL_PER_UNIT.mul(positionQuantity);
+
+            // Transfer any uncrossed position tokens
+            IERC20 token = IERC20(positionTokenType);
+            token.transfer(sender, excessQuantity);
+            // Transfer reclaimed collateral
+            collateral.transfer(sender, collateralQuantity);
+
+            if (positionTokenType == LONG_POSITION_TOKEN) {
+                emit ClearedLongSettledTrade(
+                    sender,
+                    settledValue,
+                    contribution,
+                    excessQuantity,
+                    positionQuantity,
+                    collateralQuantity
+                );
+            } else {
+                emit ClearedShortSettledTrade(
+                    sender,
+                    settledValue,
+                    contribution,
+                    excessQuantity,
+                    positionQuantity,
+                    collateralQuantity
+                );
+            }
+        }
     }
 }
