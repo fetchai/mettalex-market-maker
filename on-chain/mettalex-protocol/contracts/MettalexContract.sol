@@ -285,7 +285,10 @@ contract MettalexContract {
     )
         external
     {
-        require((token == LONG_POSITION_TOKEN) || (token == SHORT_POSITION_TOKEN));
+        require(
+            (token == LONG_POSITION_TOKEN) || (token == SHORT_POSITION_TOKEN),
+            "Given address must be either of Long Position Token or Short Position Token"
+        );
         IERC20 position = IERC20(token);
         if (token == LONG_POSITION_TOKEN) {
             require(longToSettle[msg.sender].addedQuantity == 0, "Single TAS order allowed" );
