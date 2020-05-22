@@ -328,10 +328,16 @@ contract MettalexContract {
         return ORACLE_ADDRESS;
     }
 
+    // Overloaded method to redeem collateral to sender address
+    function redeemPositionTokens(uint256 quantityToRedeem) external {
+        redeemPositionTokens(msg.sender, quantityToRedeem);
+    }
+
     function redeemPositionTokens(
         address to_address, // Destination address for collateral redeemed
         uint256 quantityToRedeem
     ) public {
+        require(to_address != address(0), "Cannot redeem to address(0)");
         IMintable long = IMintable(LONG_POSITION_TOKEN);
         IMintable short = IMintable(SHORT_POSITION_TOKEN);
 
@@ -344,11 +350,6 @@ contract MettalexContract {
         // exchange wallet receive funds address
         collateral.transfer(to_address, collateralToReturn);
         emit Redeem(to_address, quantityToRedeem, collateralToReturn);
-    }
-
-    // Overloaded method to redeem collateral to sender address
-    function redeemPositionTokens(uint256 quantityToRedeem) public {
-        redeemPositionTokens(msg.sender, quantityToRedeem);
     }
 
     function _clearSettledTrade(
