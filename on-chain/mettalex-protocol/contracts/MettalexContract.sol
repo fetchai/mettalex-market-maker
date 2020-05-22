@@ -60,7 +60,7 @@ contract MettalexContract {
     address public SHORT_POSITION_TOKEN;
     address public ORACLE_ADDRESS;
 
-    mapping(address => bool) internal contractWhitelist;
+    mapping(address => bool) public contractWhitelist;
 
     event LongPositionTokenMinted(
         address indexed to,
@@ -217,8 +217,7 @@ contract MettalexContract {
             longToSettle[msg.sender].initialQuantity,
             longToSettle[msg.sender].addedQuantity,
             longSettledValue[longToSettle[msg.sender].index],
-            LONG_POSITION_TOKEN,
-            msg.sender
+            LONG_POSITION_TOKEN
         );
     }
 
@@ -230,8 +229,7 @@ contract MettalexContract {
             shortToSettle[msg.sender].initialQuantity,
             shortToSettle[msg.sender].addedQuantity,
             shortSettledValue[shortToSettle[msg.sender].index],
-            SHORT_POSITION_TOKEN,
-            msg.sender
+            SHORT_POSITION_TOKEN        
         );
     }
 
@@ -320,15 +318,6 @@ contract MettalexContract {
     {
         return ORACLE_ADDRESS;
     }
-    
-
-    function isAddressWhiteListed(address contractAddress)
-        external
-        view
-        returns (bool)
-    {
-        return contractWhitelist[contractAddress];
-    }
 
     function redeemPositionTokens(
         address to_address,  // Destination address for collateral redeemed
@@ -364,9 +353,7 @@ contract MettalexContract {
         uint initialQuantity,
         uint addedQuantity,
         uint settledValue,
-        address positionTokenType,
-        address sender
-    )
+        address positionTokenType    )
         private
     {
         // Post TAS retrieve the collateral from settlement
@@ -404,13 +391,13 @@ contract MettalexContract {
 
             // Transfer any uncrossed position tokens
             IERC20 token = IERC20(positionTokenType);
-            token.transfer(sender, excessQuantity);
+            token.transfer(msg.sender, excessQuantity);
             // Transfer reclaimed collateral
-            collateral.transfer(sender, collateralQuantity);
+            collateral.transfer(msg.sender, collateralQuantity);
 
             if (positionTokenType == LONG_POSITION_TOKEN) {
                 emit ClearedLongSettledTrade(
-                    sender,
+                    msg.sender,
                     settledValue,
                     contribution,
                     excessQuantity,
@@ -419,7 +406,7 @@ contract MettalexContract {
                 );
             } else {
                 emit ClearedShortSettledTrade(
-                    sender,
+                    msg.sender,
                     settledValue,
                     contribution,
                     excessQuantity,
