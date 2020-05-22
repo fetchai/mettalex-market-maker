@@ -214,8 +214,8 @@ contract MettalexContract {
     {
         _clearSettledTrade(
             longToSettle[msg.sender].index,
-            longToSettle[msg.sender].addedQuantity,
             longToSettle[msg.sender].initialQuantity,
+            longToSettle[msg.sender].addedQuantity,
             longSettledValue[longToSettle[msg.sender].index],
             LONG_POSITION_TOKEN,
             msg.sender
@@ -227,8 +227,8 @@ contract MettalexContract {
     {
         _clearSettledTrade(
             shortToSettle[msg.sender].index,
-            shortToSettle[msg.sender].addedQuantity,
             shortToSettle[msg.sender].initialQuantity,
+            shortToSettle[msg.sender].addedQuantity,
             shortSettledValue[shortToSettle[msg.sender].index],
             SHORT_POSITION_TOKEN,
             msg.sender
