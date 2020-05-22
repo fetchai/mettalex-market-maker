@@ -337,7 +337,7 @@ contract MettalexContract {
         address to_address, // Destination address for collateral redeemed
         uint256 quantityToRedeem
     ) public {
-        require(to_address != address(0), "Cannot redeem to address(0)");
+        require(to_address != address(0), "INVALID_ADDRESS");
         IMintable long = IMintable(LONG_POSITION_TOKEN);
         IMintable short = IMintable(SHORT_POSITION_TOKEN);
 
