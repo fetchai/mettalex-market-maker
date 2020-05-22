@@ -45,7 +45,6 @@ contract MettalexContract {
 
     uint public PRICE_CAP;
     uint public PRICE_FLOOR;
-    uint public PRICE_DECIMAL_PLACES;   // how to convert the pricing from decimal format (if valid) to integer
     uint public QTY_MULTIPLIER;         // multiplier corresponding to the value of 1 increment in price to token base units
     uint public COLLATERAL_PER_UNIT;    // required collateral amount for the full range of outcome tokens
     uint public COLLATERAL_TOKEN_FEE_PER_UNIT;
@@ -61,7 +60,7 @@ contract MettalexContract {
     address public SHORT_POSITION_TOKEN;
     address public ORACLE_ADDRESS;
 
-    mapping(address => bool) public contractWhitelist;
+    mapping(address => bool) internal contractWhitelist;
 
     event LongPositionTokenMinted(
         address indexed to,
