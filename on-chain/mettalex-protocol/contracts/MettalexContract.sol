@@ -37,7 +37,7 @@ contract MettalexContract {
     uint256 internal totalShortToSettle;
 
     // Running count of number of price updates
-    uint256 internal priceUpdateCount;
+    uint256 public priceUpdateCount;
 
     // For each price update we store the total amount of position tokens that have been
     // settled using time at settlement orders, and the proportion of total value that
@@ -93,7 +93,7 @@ contract MettalexContract {
     event OrderedShortTAS(
         address indexed from,
         uint256 orderIndex,
-        uint256 initialTotalLongToSettle,
+        uint256 initialTotalShortToSettle,
         uint256 quantityToTrade
     );
     event ClearedLongSettledTrade(
