@@ -216,4 +216,59 @@ describe('MettalexContract', () => {
       expect((await this.mettalexContract.priceUpdateCount()).toNumber()).to.equal(initialPriceUpdateCount + 1);
     });
   });
+
+  describe('Clear Settled Trade', () => {
+    it('should change nothing for user who never made TAS order', async () => {
+      const initialCollateralTokens = (await this.collateralToken.balanceOf(other)).toNumber();
+      const initialLongTokens = (await this.longPositionToken.balanceOf(other)).toNumber();
+      const initialShortTokens = (await this.shortPositionToken.balanceOf(other)).toNumber();
+
+      await this.mettalexContract.clearLongSettledTrade({from: other});
+      await this.mettalexContract.clearShortSettledTrade({from: other});
+
+      expect((await this.collateralToken.balanceOf(other)).toNumber()).to.equal(initialCollateralTokens);
+      expect((await this.longPositionToken.balanceOf(other)).toNumber()).to.equal(initialLongTokens);
+      expect((await this.shortPositionToken.balanceOf(other)).toNumber()).to.equal(initialShortTokens);
+    });
+
+    it('should clear user\'s long position token investment', async () => {
+      const initialCollateralTokens = (await this.collateralToken.balanceOf(user)).toNumber();
+      const initialLongTokens = (await this.longPositionToken.balanceOf(user)).toNumber();
+
+      const receipt = await this.mettalexContract.clearLongSettledTrade({from: user});
+
+      await expectEvent(receipt, 'ClearedLongSettledTrade', {
+        sender: user,
+        settledValue: new BN(0),
+        senderContribution: new BN(2),
+        senderExcess: new BN(0),
+        positionQuantity: new BN(0),
+        collateralQuantity: new BN(0),
+      });
+
+      expect((await this.collateralToken.balanceOf(user)).toNumber()).to.equal(initialCollateralTokens);
+      expect((await this.longPositionToken.balanceOf(user)).toNumber()).to.equal(initialLongTokens);
+    });
+
+    it('should clear user\'s short position token investment', async () => {
+      const initialCollateralTokens = (await this.collateralToken.balanceOf(user)).toNumber();
+      const initialShortTokens = (await this.shortPositionToken.balanceOf(user)).toNumber();
+
+      const receipt = await this.mettalexContract.clearShortSettledTrade({
+        from: user
+      });
+
+      await expectEvent(receipt, 'ClearedShortSettledTrade', {
+        sender: user,
+        settledValue: new BN(1),
+        senderContribution: new BN(2),
+        senderExcess: new BN(0),
+        positionQuantity: new BN(1),
+        collateralQuantity: new BN(1000000000000),
+      });
+
+      expect((await this.collateralToken.balanceOf(user)).toNumber()).to.equal(initialCollateralTokens + 1000000000000);
+      expect((await this.shortPositionToken.balanceOf(user)).toNumber()).to.equal(initialShortTokens);
+    });
+  });
 });
