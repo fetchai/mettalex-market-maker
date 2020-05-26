@@ -25,6 +25,10 @@ describe('MettalexContract', () => {
       300,
       { from: owner },
     );
+
+    await this.collateralToken.setWhitelist(user, true);
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
   });
 
   describe('Check initializations', () => {
@@ -33,40 +37,40 @@ describe('MettalexContract', () => {
     });
 
     it('should check spot price', async () => {
-      expect((await this.mettalexContract.PRICE_SPOT()).toString()).to.equal('0');
+      expect((await this.mettalexContract.PRICE_SPOT()).toNumber()).to.equal(0);
     });
 
 
     it('should check price update count', async () => {
-      expect((await this.mettalexContract.priceUpdateCount()).toString()).to.equal('0');
+      expect((await this.mettalexContract.priceUpdateCount()).toNumber()).to.equal(0);
     });
 
     it('should check cap price', async () => {
-      expect((await this.mettalexContract.PRICE_CAP()).toString()).to.equal('75000000');
+      expect((await this.mettalexContract.PRICE_CAP()).toNumber()).to.equal(75000000);
     });
 
     it('should check floor price', async () => {
-      expect((await this.mettalexContract.PRICE_FLOOR()).toString()).to.equal('25000000');
+      expect((await this.mettalexContract.PRICE_FLOOR()).toNumber()).to.equal(25000000);
     });
 
     it('should check quantity multiplier', async () => {
-      expect((await this.mettalexContract.QTY_MULTIPLIER()).toString()).to.equal('20000');
+      expect((await this.mettalexContract.QTY_MULTIPLIER()).toNumber()).to.equal(20000);
     });
 
     it('should check collateral per unit', async () => {
-      expect((await this.mettalexContract.COLLATERAL_PER_UNIT()).toString()).to.equal('1000000000000');
+      expect((await this.mettalexContract.COLLATERAL_PER_UNIT()).toNumber()).to.equal(1000000000000);
     });
 
     it('should check collateral token fee per unit', async () => {
-      expect((await this.mettalexContract.COLLATERAL_TOKEN_FEE_PER_UNIT()).toString()).to.equal('3000000000');
+      expect((await this.mettalexContract.COLLATERAL_TOKEN_FEE_PER_UNIT()).toNumber()).to.equal(3000000000);
     });
 
     it('should check last price', async () => {
-      expect((await this.mettalexContract.lastPrice()).toString()).to.equal('0');
+      expect((await this.mettalexContract.lastPrice()).toNumber()).to.equal(0);
     });
 
     it('should check settlement price', async () => {
-      expect((await this.mettalexContract.settlementPrice()).toString()).to.equal('0');
+      expect((await this.mettalexContract.settlementPrice()).toNumber()).to.equal(0);
     });
 
     it('should check price updater', async () => {
@@ -76,9 +80,6 @@ describe('MettalexContract', () => {
 
   describe('Mint position tokens', () => {
     before(async () => {
-      await this.collateralToken.setWhitelist(user, true);
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
       await this.collateralToken.mint(user, 20060000000000);
     });
 
@@ -104,7 +105,7 @@ describe('MettalexContract', () => {
         collateralFeeRequired: new BN(30000000000),
       });
 
-      expect((await this.longPositionToken.balanceOf(user)).toString()).to.equal('10');
+      expect((await this.longPositionToken.balanceOf(user)).toNumber()).to.equal(10);
 
       await expectEvent(receipt, 'ShortPositionTokenMinted', {
         to: user,
@@ -113,7 +114,7 @@ describe('MettalexContract', () => {
         collateralFeeRequired: new BN(30000000000),
       });
 
-      expect((await this.shortPositionToken.balanceOf(user)).toString()).to.equal('10');
+      expect((await this.shortPositionToken.balanceOf(user)).toNumber()).to.equal(10);
     });
   });
 });
