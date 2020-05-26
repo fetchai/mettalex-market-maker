@@ -73,4 +73,47 @@ describe('MettalexContract', () => {
       expect((await this.mettalexContract.priceUpdater()).toString()).to.equal(oracle);
     });
   });
+
+  describe('Mint position tokens', () => {
+    before(async () => {
+      await this.collateralToken.setWhitelist(user, true);
+      await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
+      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
+      await this.collateralToken.mint(user, 20060000000000);
+    });
+
+    it('should reject mint from user that is not whitelisted', async () => {
+      await expectRevert(this.mettalexContract.mintPositionTokens(200, {from: other}), 'revert');
+    });
+
+    it('should revert if collateral cannot be transferred', async () => {
+      await this.collateralToken.approve(this.mettalexContract.address, 999, {from: user});
+
+      await expectRevert(this.mettalexContract.mintPositionTokens(200, {from: user}), 'revert');
+    });
+
+    it('should mint 10 long & 10 short position tokens', async () => {
+      await this.collateralToken.approve(this.mettalexContract.address, 20060000000000, {from: user});
+
+      const receipt = await this.mettalexContract.mintPositionTokens(10, {from: user});
+
+      await expectEvent(receipt, 'LongPositionTokenMinted', {
+        to: user,
+        value: new BN(10),
+        collateralRequired: new BN(10000000000000),
+        collateralFeeRequired: new BN(30000000000),
+      });
+
+      expect((await this.longPositionToken.balanceOf(user)).toString()).to.equal('10');
+
+      await expectEvent(receipt, 'ShortPositionTokenMinted', {
+        to: user,
+        value: new BN(10),
+        collateralRequired: new BN(10000000000000),
+        collateralFeeRequired: new BN(30000000000),
+      });
+
+      expect((await this.shortPositionToken.balanceOf(user)).toString()).to.equal('10');
+    });
+  });
 });
