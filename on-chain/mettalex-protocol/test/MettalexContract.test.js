@@ -126,7 +126,7 @@ describe('MettalexContract', () => {
     });
 
     it('should redeem 3 long and 3 short position tokens', async () => {
-      const initialLongTokens = new BN(await this.longPositionToken.balanceOf(user));
+      const initialLongTokens = await this.longPositionToken.balanceOf(user);
       const initialShortTokens = await this.shortPositionToken.balanceOf(user);
 
       const receipt = await this.mettalexContract.redeemPositionTokens(tokensToRedeem, {from: user});
@@ -136,8 +136,59 @@ describe('MettalexContract', () => {
         collateralToReturn: new BN(3000000000000),
       });
 
-      expect((await this.shortPositionToken.balanceOf(user)).toNumber()).to.equal(initialShortTokens - 3);
       expect((await this.longPositionToken.balanceOf(user)).toNumber()).to.equal(initialLongTokens - 3);
+      expect((await this.shortPositionToken.balanceOf(user)).toNumber()).to.equal(initialShortTokens - 3);
+    });
+  });
+
+  describe('Trade at settlement', () => {
+    const tokensToInvest = 2;
+
+    before(async () => {
+      await this.longPositionToken.approve(this.mettalexContract.address, 2, {from: user});
+      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user});
+    });
+
+    it('should reject call without either of long or short token', async () => {
+      await expectRevert(this.mettalexContract.tradeAtSettlement(other, tokensToInvest, {from: user}), 'Given address must be either of Long Position Token or Short Position Token');
+    });
+
+    it('should invest 2 long tokens in stock', async () => {
+      const initialLongTokens = await this.longPositionToken.balanceOf(user);
+
+      const receipt = await this.mettalexContract.tradeAtSettlement(this.longPositionToken.address, tokensToInvest, {from: user});
+
+      await expectEvent(receipt, 'OrderedLongTAS', {
+        from: user,
+        orderIndex: new BN(0),
+        initialTotalLongToSettle: new BN(0),
+        quantityToTrade: new BN(tokensToInvest),
+      });
+
+      expect((await this.longPositionToken.balanceOf(user)).toNumber()).to.equal(initialLongTokens - 2);
+    });
+
+    it('should invest 2 short tokens in stock', async () => {
+      const initialShortTokens = await this.shortPositionToken.balanceOf(user);
+
+      const receipt = await this.mettalexContract.tradeAtSettlement(this.shortPositionToken.address, tokensToInvest, {from: user});
+
+      await expectEvent(receipt, 'OrderedShortTAS', {
+        from: user,
+        orderIndex: new BN(0),
+        initialTotalShortToSettle: new BN(0),
+        quantityToTrade: new BN(tokensToInvest),
+      });
+
+      expect((await this.shortPositionToken.balanceOf(user)).toNumber()).to.equal(initialShortTokens - 2);
+    });
+
+    it('should disallow multiple trade at settlement orders with long position token', async () => {
+      await expectRevert(this.mettalexContract.tradeAtSettlement(this.longPositionToken.address, tokensToInvest, {from: user}), 'Single TAS order allowed');
+    });
+
+    it('should disallow multiple trade at settlement orders with short position token', async () => {
+      await expectRevert(this.mettalexContract.tradeAtSettlement(this.shortPositionToken.address, tokensToInvest, {from: user}), 'Single TAS order allowed');
     });
   });
 });
