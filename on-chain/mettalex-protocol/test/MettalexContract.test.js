@@ -191,4 +191,29 @@ describe('MettalexContract', () => {
       await expectRevert(this.mettalexContract.tradeAtSettlement(this.shortPositionToken.address, tokensToInvest, {from: user}), 'Single TAS order allowed');
     });
   });
+
+  describe('updateSpot', () => {
+    it('should reject call from address other than price updater', async () => {
+      await expectRevert(this.mettalexContract.updateSpot(20000000, {from: user}), 'ORACLE_ONLY');
+    });
+
+    it('should reject price update on breach', async () => {
+      await expectRevert(this.mettalexContract.updateSpot(24000000, {from: oracle}), 'arbitration price must be within contract bounds');
+    });
+
+    it('should update spot price', async () => {
+      const initialLongTokens = await this.longPositionToken.balanceOf(this.mettalexContract.address);
+      const initialShortTokens = await this.shortPositionToken.balanceOf(this.mettalexContract.address);
+      const initialPriceUpdateCount = (await this.mettalexContract.priceUpdateCount()).toNumber();
+
+      const receipt = await this.mettalexContract.updateSpot(44000000, {from: oracle});
+      await expectEvent(receipt, 'UpdatedLastPrice', {price: new BN(44000000)});
+      await this.mettalexContract.updateSpot(44000000, {from: oracle});
+
+      expect((await this.longPositionToken.balanceOf(this.mettalexContract.address)).toNumber()).to.equal(initialLongTokens - 2);
+      expect((await this.shortPositionToken.balanceOf(this.mettalexContract.address)).toNumber()).to.equal(initialShortTokens - 2);
+
+      expect((await this.mettalexContract.priceUpdateCount()).toNumber()).to.equal(initialPriceUpdateCount + 1);
+    });
+  });
 });
