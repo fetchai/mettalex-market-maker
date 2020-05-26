@@ -117,4 +117,27 @@ describe('MettalexContract', () => {
       expect((await this.shortPositionToken.balanceOf(user)).toNumber()).to.equal(10);
     });
   });
+
+  describe('Redeem position tokens', () => {
+    const tokensToRedeem = 3;
+
+    it('should revert if sender has insufficient tokens to redeem', async () => {
+      await expectRevert(this.mettalexContract.redeemPositionTokens(tokensToRedeem, {from: other}), 'revert');
+    });
+
+    it('should redeem 3 long and 3 short position tokens', async () => {
+      const initialLongTokens = new BN(await this.longPositionToken.balanceOf(user));
+      const initialShortTokens = await this.shortPositionToken.balanceOf(user);
+
+      const receipt = await this.mettalexContract.redeemPositionTokens(tokensToRedeem, {from: user});
+      await expectEvent(receipt, 'Redeem', {
+        to: user,
+        burntTokenQuantity: new BN(tokensToRedeem),
+        collateralToReturn: new BN(3000000000000),
+      });
+
+      expect((await this.shortPositionToken.balanceOf(user)).toNumber()).to.equal(initialShortTokens - 3);
+      expect((await this.longPositionToken.balanceOf(user)).toNumber()).to.equal(initialLongTokens - 3);
+    });
+  });
 });
