@@ -83,13 +83,28 @@ describe('MettalexContract', () => {
     await this.mettalexContract.mintPositionTokens(initialTokens, {from: account});
     await _endMinting(account);
 
-    try {
-      await _setupForTASOrder(account, investment);
-      await this.mettalexContract.tradeAtSettlement(positionToken.address, investment, {from: account});
-      await _endTASOrder(account);
-    } catch(err) {
-      expect(err.to.equal(err));
-    }
+    await _setupForTASOrder(account, investment);
+    await this.mettalexContract.tradeAtSettlement(positionToken.address, investment, {from: account});
+    await _endTASOrder(account);
+  };
+
+  const _setupForUpdateSpot = async (account1, account2, collateral) => {
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
+
+    await this.collateralToken.mint(this.mettalexContract.address, collateral);
+    await this.collateralToken.approve(this.mettalexContract.address, collateral, {from: account1});
+    await this.collateralToken.approve(this.mettalexContract.address, collateral, {from: account2});
+  };
+
+  const _endUpdateSpot = async (account1, account2) => {
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, false);
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false);
+
+    const remainingCollateralToken = new BN((await this.collateralToken.balanceOf(this.mettalexContract.address)).toString());
+    await this.collateralToken.burn(this.mettalexContract.address, remainingCollateralToken);
+    await this.collateralToken.approve(this.mettalexContract.address, 0, {from: account1});
+    await this.collateralToken.approve(this.mettalexContract.address, 0, {from: account2});
   };
 
   describe('Check initializations', () => {
@@ -231,13 +246,12 @@ describe('MettalexContract', () => {
       await _endRedeeming(user);
     });
   
-    // TO-DO
-    // it('should revert if sender\'s address is invalid', async () => {
-    //   await this.collateralToken.setWhitelist(nullAddress, true);
+    it('should revert if sender\'s address is invalid', async () => {
+      await this.collateralToken.setWhitelist(nullAddress, true);
 
-    //   await this.collateralToken.mint(this.mettalexContract.address, requiredCollateral);
-    //   await expectRevert(await this.mettalexContract.redeemPositionTokens(nullAddress, tokensToRedeem), 'INVALID_ADDRESS');
-    // });
+      await this.collateralToken.mint(this.mettalexContract.address, requiredCollateral);
+      await expectRevert(this.mettalexContract.redeemPositionTokens(nullAddress, tokensToRedeem), 'INVALID_ADDRESS');
+    });
 
     it('should revert if user is not whitelisted in collateral token', async () => {
       await this.collateralToken.setWhitelist(user, false);
@@ -383,20 +397,11 @@ describe('MettalexContract', () => {
     });
 
     beforeEach(async () => {
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
-
-      await this.collateralToken.mint(this.mettalexContract.address, requiredCollateral);
-      await this.collateralToken.approve(this.mettalexContract.address, requiredCollateral, {from: user});
+      await _setupForUpdateSpot(user, user, requiredCollateral);
     });
 
     afterEach(async () => {
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, false);
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false);
-
-      const remainingCollateralToken = new BN((await this.collateralToken.balanceOf(this.mettalexContract.address)).toString());
-      await this.collateralToken.burn(this.mettalexContract.address, remainingCollateralToken);
-      await this.collateralToken.approve(this.mettalexContract.address, 0, {from: user});
+      await _endUpdateSpot(user, user);
     });
 
     after(async () => {
@@ -454,10 +459,8 @@ describe('MettalexContract', () => {
     });
 
     it('should update spot price & deal with only existing long TAS order', async () => {
-      //setup
       await _makeTASOrder(user3, this.longPositionToken, 2);
 
-      //testcase
       await this.collateralToken.approve(this.mettalexContract.address, requiredCollateral, {from: user3});
 
       const initialLongTokens = new BN((await this.longPositionToken.balanceOf(this.mettalexContract.address)).toString());
@@ -472,79 +475,47 @@ describe('MettalexContract', () => {
   
       expect((await this.mettalexContract.priceUpdateCount()).toString()).to.equal(initialPriceUpdateCount.toString());
 
-      // reset
       await _makeTASOrder(user5, this.shortPositionToken, 2);
-
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
-
-      await this.collateralToken.mint(this.mettalexContract.address, new BN('5030000000000000'));
-      await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user3});
-      await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user5});
-
+      await _setupForUpdateSpot(user3, user5, requiredCollateral);
       await this.mettalexContract.updateSpot(44000000, {from: oracle});
     });
   
     it('should update spot price & deal with only existing short TAS order', async () => {
-      //setup
       await _makeTASOrder(user2, this.shortPositionToken, 2);
-  
-      //testcase
+
       await this.collateralToken.approve(this.mettalexContract.address, requiredCollateral, {from: user2});
-  
+
       const initialLongTokens = new BN((await this.longPositionToken.balanceOf(this.mettalexContract.address)).toString());
       const initialShortTokens = new BN((await this.shortPositionToken.balanceOf(this.mettalexContract.address)).toString());
       const initialPriceUpdateCount = new BN((await this.mettalexContract.priceUpdateCount()).toString());
-  
+
       const receipt = await this.mettalexContract.updateSpot(44000000, {from: oracle});
       await expectEvent(receipt, 'UpdatedLastPrice', {price: new BN(44000000)});
-  
+
       expect((await this.longPositionToken.balanceOf(this.mettalexContract.address)).toString()).to.equal(initialLongTokens.toString());
       expect((await this.shortPositionToken.balanceOf(this.mettalexContract.address)).toString()).to.equal(initialShortTokens.toString());
-  
+
       expect((await this.mettalexContract.priceUpdateCount()).toString()).to.equal(initialPriceUpdateCount.toString());
-  
-      // reset
+
+      await _makeTASOrder(user5, this.longPositionToken, 2);
+      await _setupForUpdateSpot(user2, user5, requiredCollateral);
       await this.mettalexContract.updateSpot(44000000, {from: oracle});
     });
   });
 
   describe('Clear Settled Trade', () => {
-    beforeEach(async () => {
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
-
-      await this.collateralToken.mint(this.mettalexContract.address, new BN('5030000000000000'));
-      await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user});
-    });
-
-    it('should revert as long TAS order\'s settle index is greater than price update count', async () => {
-      await _makeTASOrder(user5, this.longPositionToken, 2);
-
+    it('should revert as long TAS order\'s settle index is greater than price update count', async () => { // depends on prev update spot
+      await _makeTASOrder(user6, this.longPositionToken, 2);
       await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user6});
 
       await expectRevert(this.mettalexContract.clearLongSettledTrade({from: user6}), 'Can only clear previously settled order');
-
-      await _makeTASOrder(user4, this.shortPositionToken, 2);
-
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
-
-      await this.collateralToken.mint(this.mettalexContract.address, new BN('5030000000000000'));
-      await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user4});
-      await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user6});
-
-      await this.mettalexContract.updateSpot(44000000, {from: oracle});
     });
 
-    it('should revert as short TAS order\'s settle index is greater than price update count', async () => {
-      await _makeTASOrder(user7, this.shortPositionToken, 2);
-  
-      await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user7});
+    it('should revert as short TAS order\'s settle index is greater than price update count', async () => { // prev depend
+      await _makeTASOrder(user4, this.shortPositionToken, 2);
+      await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user4});
 
-      await this.mettalexContract.updateSpot(44000000, {from: oracle});
-
-      await expectRevert(this.mettalexContract.clearShortSettledTrade({from: user7}), 'Can only clear previously settled order');
+      await expectRevert(this.mettalexContract.clearShortSettledTrade({from: user4}), 'Can only clear previously settled order');
     });
 
     it('should change nothing for user who never made TAS order', async () => {
@@ -559,15 +530,66 @@ describe('MettalexContract', () => {
       expect((await this.longPositionToken.balanceOf(other)).toNumber()).to.equal(initialLongTokens);
       expect((await this.shortPositionToken.balanceOf(other)).toNumber()).to.equal(initialShortTokens);
     });
-    //to-do cover cases of different type of clearing- full contrib, half, none (long/short diff)
-    it('should clear user\'s long position token investment', async () => {
-      const initialCollateralTokens = new BN((await this.collateralToken.balanceOf(user)).toString());
-      const initialLongTokens = new BN((await this.longPositionToken.balanceOf(user)).toString());
+    // to-do cover cases of different type of clearing- full contrib, half, none (long/short diff)
+    it('should clear user\'s long position token investment having some contribution', async () => {
+      await _makeTASOrder(user7, this.longPositionToken, 2);
+      await _makeTASOrder(user7, this.shortPositionToken, 1);
+      await _makeTASOrder(user2, this.longPositionToken, 2);
+      await _setupForUpdateSpot(user4, user6, new BN('7545000000000000'));
+      await this.mettalexContract.updateSpot(44000000, {from: oracle});
 
-      const receipt = await this.mettalexContract.clearLongSettledTrade({from: user});
+      const initialCollateralTokens = new BN((await this.collateralToken.balanceOf(user7)).toString());
+      const initialLongTokens = new BN((await this.longPositionToken.balanceOf(user7)).toString());
+
+      const receipt = await this.mettalexContract.clearLongSettledTrade({from: user7});
 
       await expectEvent(receipt, 'ClearedLongSettledTrade', {
-        sender: user,
+        sender: user7,
+        settledValue: new BN(0),
+        senderContribution: new BN(1),
+        senderExcess: new BN(1),
+        positionQuantity: new BN(0),
+        collateralQuantity: new BN(0),
+      });
+
+      expect((await this.collateralToken.balanceOf(user7)).toString()).to.equal(initialCollateralTokens.toString());
+      expect((await this.longPositionToken.balanceOf(user7) - 1).toString()).to.equal(initialLongTokens.toString());
+    });
+
+    it('should clear user\'s short position token investment having some contribution', async () => {
+      await _makeTASOrder(owner, this.longPositionToken, 1);
+      await _makeTASOrder(owner, this.shortPositionToken, 2);
+      await _setupForUpdateSpot(owner, owner, new BN('7545000000000000'));
+      await this.mettalexContract.updateSpot(44000000, {from: oracle});
+
+      const initialCollateralTokens = new BN((await this.collateralToken.balanceOf(owner)).toString());
+      const initialShortTokens = new BN((await this.shortPositionToken.balanceOf(owner)).toString());
+
+      const receipt = await this.mettalexContract.clearShortSettledTrade({
+        from: owner
+      });
+
+      await expectEvent(receipt, 'ClearedShortSettledTrade', {
+        sender: owner,
+        settledValue: new BN(0),
+        senderContribution: new BN(1),
+        senderExcess: new BN(1),
+        positionQuantity: new BN(0),
+        collateralQuantity: new BN('0'),
+      });
+
+      expect((await this.collateralToken.balanceOf(owner)).toString()).to.equal('0');
+      expect((await this.shortPositionToken.balanceOf(owner) - 1).toString()).to.equal(initialShortTokens.toString());
+    });
+
+    it('should clear user\'s long position token investment having full contribution', async () => {
+      const initialCollateralTokens = new BN((await this.collateralToken.balanceOf(user6)).toString());
+      const initialLongTokens = new BN((await this.longPositionToken.balanceOf(user6)).toString());
+
+      const receipt = await this.mettalexContract.clearLongSettledTrade({from: user6});
+
+      await expectEvent(receipt, 'ClearedLongSettledTrade', {
+        sender: user6,
         settledValue: new BN(0),
         senderContribution: new BN(2),
         senderExcess: new BN(0),
@@ -575,29 +597,75 @@ describe('MettalexContract', () => {
         collateralQuantity: new BN(0),
       });
 
-      expect((await this.collateralToken.balanceOf(user)).toString()).to.equal(initialCollateralTokens.toString());
-      expect((await this.longPositionToken.balanceOf(user)).toString()).to.equal(initialLongTokens.toString());
+      expect((await this.collateralToken.balanceOf(user6)).toString()).to.equal(initialCollateralTokens.toString());
+      expect((await this.longPositionToken.balanceOf(user6)).toString()).to.equal(initialLongTokens.toString());
     });
 
-    it('should clear user\'s short position token investment', async () => {
-      const initialCollateralTokens = new BN((await this.collateralToken.balanceOf(user)).toString());
-      const initialShortTokens = new BN((await this.shortPositionToken.balanceOf(user)).toString());
+    it('should clear user\'s short position token investment having full contribution', async () => {
+      const initialCollateralTokens = new BN((await this.collateralToken.balanceOf(user4)).toString());
+      const initialShortTokens = new BN((await this.shortPositionToken.balanceOf(user4)).toString());
 
       const receipt = await this.mettalexContract.clearShortSettledTrade({
-        from: user
+        from: user4
       });
 
       await expectEvent(receipt, 'ClearedShortSettledTrade', {
-        sender: user,
-        settledValue: new BN(1),
+        sender: user4,
+        settledValue: new BN(2),
         senderContribution: new BN(2),
         senderExcess: new BN(0),
         positionQuantity: new BN(1),
         collateralQuantity: new BN('2500000000000000'),
       });
 
-      expect((await this.collateralToken.balanceOf(user)).toString()).to.equal('22500000000000000');
-      expect((await this.shortPositionToken.balanceOf(user)).toString()).to.equal(initialShortTokens.toString());
+      expect((await this.collateralToken.balanceOf(user4)).toString()).to.equal('2500000000000000');
+      expect((await this.shortPositionToken.balanceOf(user4)).toString()).to.equal(initialShortTokens.toString());
+    });
+
+    it('should clear user\'s long position token investment having no contribution', async () => {
+      const initialCollateralTokens = new BN((await this.collateralToken.balanceOf(user2)).toString());
+      const initialLongTokens = (await this.longPositionToken.balanceOf(user2)).toNumber();
+
+      const receipt = await this.mettalexContract.clearLongSettledTrade({from: user2});
+
+      await expectEvent(receipt, 'ClearedLongSettledTrade', {
+        sender: user2,
+        settledValue: new BN(0),
+        senderContribution: new BN(0),
+        senderExcess: new BN(2),
+        positionQuantity: new BN(0),
+        collateralQuantity: new BN(0),
+      });
+
+      expect((await this.collateralToken.balanceOf(user2)).toString()).to.equal(initialCollateralTokens.toString());
+      expect((await this.longPositionToken.balanceOf(user2)).toString()).to.equal((initialLongTokens + 2).toString());
+    });
+
+    it('should clear user\'s short position token investment having no contribution', async () => {
+      await _makeTASOrder(other, this.longPositionToken, 1);
+      await _makeTASOrder(other, this.shortPositionToken, 2);
+      await _makeTASOrder(user3, this.shortPositionToken, 2);
+      await _setupForUpdateSpot(other, other, new BN('2515000000000000'));
+      await this.mettalexContract.updateSpot(44000000, {from: oracle});
+      
+      const initialCollateralTokens = (await this.collateralToken.balanceOf(user3)).toNumber();
+      const initialShortTokens = (await this.shortPositionToken.balanceOf(user3)).toNumber();
+
+      const receipt = await this.mettalexContract.clearShortSettledTrade({
+        from: user3
+      });
+
+      await expectEvent(receipt, 'ClearedShortSettledTrade', {
+        sender: user3,
+        settledValue: new BN(0),
+        senderContribution: new BN(0),
+        senderExcess: new BN(2),
+        positionQuantity: new BN(0),
+        collateralQuantity: new BN(0),
+      });
+
+      expect((await this.collateralToken.balanceOf(user3)).toString()).to.equal(initialCollateralTokens.toString());
+      expect((await this.shortPositionToken.balanceOf(user3)).toString()).to.equal((initialShortTokens + 2).toString());
     });
   });
 

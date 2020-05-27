@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "test": "npx mocha --exit --recursive test",
+    "test": "npx mocha --exit --recursive test --timeout 10000",
     "compile": "truffle compile",
     "coverage": "solidity-coverage"
   },
