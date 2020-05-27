@@ -66,6 +66,32 @@ describe('MettalexContract', () => {
     await this.collateralToken.approve(this.mettalexContract.address, 0, {from: account});
   };
 
+  const _setupForTASOrder = async (account, investment) => {
+    await this.longPositionToken.approve(this.mettalexContract.address, investment, {from: account});
+    await this.shortPositionToken.approve(this.mettalexContract.address, investment, {from: account});
+  };
+
+  const _endTASOrder = async (account) => {
+    await this.longPositionToken.approve(this.mettalexContract.address, 0, {from: account});
+    await this.shortPositionToken.approve(this.mettalexContract.address, 0, {from: account});
+  };
+
+  const _makeTASOrder = async (account, positionToken, investment) => {
+    const initialTokens = 10;
+    const requiredCollateral = new BN('25150000000000000');
+    await _setupForMinting(account, requiredCollateral);
+    await this.mettalexContract.mintPositionTokens(initialTokens, {from: account});
+    await _endMinting(account);
+
+    try {
+      await _setupForTASOrder(account, investment);
+      await this.mettalexContract.tradeAtSettlement(positionToken.address, investment, {from: account});
+      await _endTASOrder(account);
+    } catch(err) {
+      expect(err.to.equal(err));
+    }
+  };
+
   describe('Check initializations', () => {
     it('should check contract name', async () => {
       expect((await this.mettalexContract.CONTRACT_NAME()).toString()).to.equal('Mettalex');
@@ -277,13 +303,11 @@ describe('MettalexContract', () => {
     });
 
     beforeEach(async () => {
-      await this.longPositionToken.approve(this.mettalexContract.address, 2, {from: user});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user});
+      await _setupForTASOrder(user, tokensToInvest);
     });
 
     afterEach(async () => {
-      await this.longPositionToken.approve(this.mettalexContract.address, 0, {from: user});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 0, {from: user});
+      await _endTASOrder(user);
     });
 
     after(async () => {
@@ -297,8 +321,7 @@ describe('MettalexContract', () => {
     });
 
     it('should reject call if contract not approved to transfer long or short tokens', async () => {
-      await this.longPositionToken.approve(this.mettalexContract.address, 0, {from: user});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 0, {from: user});
+      await _endTASOrder(user);
 
       await expectRevert(this.mettalexContract.tradeAtSettlement(this.longPositionToken.address, tokensToInvest, {from: user}), 'revert');
 
@@ -432,38 +455,25 @@ describe('MettalexContract', () => {
 
     it('should update spot price & deal with only existing long TAS order', async () => {
       //setup
-      await _setupForMinting(user3, new BN('25150000000000000'));
-      await this.mettalexContract.mintPositionTokens(10, {from: user3});
-      await _endMinting(user3);
-  
-      await this.longPositionToken.approve(this.mettalexContract.address, 2, {from: user3});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user3});
-  
-      await this.mettalexContract.tradeAtSettlement(this.longPositionToken.address, 2, {from: user3});
-  
+      await _makeTASOrder(user3, this.longPositionToken, 2);
+
       //testcase
       await this.collateralToken.approve(this.mettalexContract.address, requiredCollateral, {from: user3});
-  
+
       const initialLongTokens = new BN((await this.longPositionToken.balanceOf(this.mettalexContract.address)).toString());
       const initialShortTokens = new BN((await this.shortPositionToken.balanceOf(this.mettalexContract.address)).toString());
       const initialPriceUpdateCount = new BN((await this.mettalexContract.priceUpdateCount()).toString());
-  
+
       const receipt = await this.mettalexContract.updateSpot(44000000, {from: oracle});
       await expectEvent(receipt, 'UpdatedLastPrice', {price: new BN(44000000)});
-  
+
       expect((await this.longPositionToken.balanceOf(this.mettalexContract.address)).toString()).to.equal(initialLongTokens.toString());
       expect((await this.shortPositionToken.balanceOf(this.mettalexContract.address)).toString()).to.equal(initialShortTokens.toString());
   
       expect((await this.mettalexContract.priceUpdateCount()).toString()).to.equal(initialPriceUpdateCount.toString());
-  
+
       // reset
-      await _setupForMinting(user5, new BN('25150000000000000'));
-      await this.mettalexContract.mintPositionTokens(10, {from: user5});
-      await _endMinting(user5);
-  
-      await this.longPositionToken.approve(this.mettalexContract.address, 2, {from: user5});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user5});
-      await this.mettalexContract.tradeAtSettlement(this.shortPositionToken.address, 2, {from: user5});
+      await _makeTASOrder(user5, this.shortPositionToken, 2);
 
       await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
       await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
@@ -477,14 +487,7 @@ describe('MettalexContract', () => {
   
     it('should update spot price & deal with only existing short TAS order', async () => {
       //setup
-      await _setupForMinting(user2, new BN('25150000000000000'));
-      await this.mettalexContract.mintPositionTokens(10, {from: user2});
-      await _endMinting(user2);
-  
-      await this.longPositionToken.approve(this.mettalexContract.address, 2, {from: user2});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user2});
-  
-      await this.mettalexContract.tradeAtSettlement(this.shortPositionToken.address, 2, {from: user2});
+      await _makeTASOrder(user2, this.shortPositionToken, 2);
   
       //testcase
       await this.collateralToken.approve(this.mettalexContract.address, requiredCollateral, {from: user2});
@@ -516,27 +519,13 @@ describe('MettalexContract', () => {
     });
 
     it('should revert as long TAS order\'s settle index is greater than price update count', async () => {
-      await _setupForMinting(user6, new BN('25150000000000000'));
-      await this.mettalexContract.mintPositionTokens(10, {from: user6});
-      await _endMinting(user6);
-  
-      await this.longPositionToken.approve(this.mettalexContract.address, 2, {from: user6});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user6});
-  
-      await this.mettalexContract.tradeAtSettlement(this.longPositionToken.address, 2, {from: user6});
+      await _makeTASOrder(user5, this.longPositionToken, 2);
 
       await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user6});
 
       await expectRevert(this.mettalexContract.clearLongSettledTrade({from: user6}), 'Can only clear previously settled order');
 
-      await _setupForMinting(user4, new BN('25150000000000000'));
-      await this.mettalexContract.mintPositionTokens(10, {from: user4});
-      await _endMinting(user4);
-  
-      await this.longPositionToken.approve(this.mettalexContract.address, 2, {from: user4});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user4});
-
-      await this.mettalexContract.tradeAtSettlement(this.shortPositionToken.address, 2, {from: user4});
+      await _makeTASOrder(user4, this.shortPositionToken, 2);
 
       await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
       await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
@@ -549,14 +538,7 @@ describe('MettalexContract', () => {
     });
 
     it('should revert as short TAS order\'s settle index is greater than price update count', async () => {
-      await _setupForMinting(user7, new BN('25150000000000000'));
-      await this.mettalexContract.mintPositionTokens(10, {from: user7});
-      await _endMinting(user7);
-  
-      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user7});
-      await this.shortPositionToken.approve(this.mettalexContract.address, 2, {from: user7});
-
-      await this.mettalexContract.tradeAtSettlement(this.shortPositionToken.address, 2, {from: user7});
+      await _makeTASOrder(user7, this.shortPositionToken, 2);
   
       await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user7});
 
