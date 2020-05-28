@@ -12,9 +12,9 @@ describe('MettalexContract', () => {
   const nullAddress = '0x0000000000000000000000000000000000000000';
 
   before(async () => {
-    this.collateralToken = await CoinToken.new('Tether', 'USDT', 18);
-    this.longPositionToken = await PositionToken.new('LongToken', 'LTK', 6);
-    this.shortPositionToken = await PositionToken.new('ShortToken', 'STK', 6);
+    this.collateralToken = await CoinToken.new('Tether', 'USDT', 18, { from: owner });
+    this.longPositionToken = await PositionToken.new('LongToken', 'LTK', 6, { from: owner });
+    this.shortPositionToken = await PositionToken.new('ShortToken', 'STK', 6, { from: owner });
     this.mettalexContract = await MettalexContract.new(
       this.collateralToken.address,
       this.longPositionToken.address,
@@ -28,41 +28,45 @@ describe('MettalexContract', () => {
     );
   });
 
-  const _setupForMinting = async (account, collateral) => {
-    await this.collateralToken.setWhitelist(account, true);
-    await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
-    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
+  const _getCollateral = async (account, collateral) => {
+    const remainingCollateralToken = new BN((await this.collateralToken.balanceOf(account)).toString());
 
-    await this.collateralToken.mint(account, collateral);
+    if (collateral.sub(remainingCollateralToken) > new BN(0))
+      await this.collateralToken.transfer(account, collateral.sub(remainingCollateralToken), { from: owner });
+  };
+
+  const _burnCollateral = async (account) => {
+    const remainingCollateralToken = new BN((await this.collateralToken.balanceOf(account)).toString());
+    await this.collateralToken.burn(account, remainingCollateralToken, { from: owner });
+  }; 
+
+  const _setupForMinting = async (account, collateral) => {
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, true, { from: owner });
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true, { from: owner });
+
+    await this.collateralToken.transfer(account, collateral, {from: owner});
     await this.collateralToken.approve(this.mettalexContract.address, collateral, {from: account});
   };
 
   const _endMinting = async (account) => {
-    await this.collateralToken.setWhitelist(account, false);
-    await this.longPositionToken.setWhitelist(this.mettalexContract.address, false);
-    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false);
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
-    const remainingCollateralToken = new BN((await this.collateralToken.balanceOf(account)).toString());
-    await this.collateralToken.burn(account, remainingCollateralToken);
-    await this.collateralToken.approve(this.mettalexContract.address, 0, {from: account});
+    await this.collateralToken.approve(this.mettalexContract.address, 0, { from: account });
   };
 
   const _setupForRedeeming = async (account, collateral) => {
-    await this.collateralToken.setWhitelist(account, true);
-    await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
-    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, true, { from: owner });
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true, { from: owner });
 
-    await this.collateralToken.mint(this.mettalexContract.address, collateral);
+    await this.collateralToken.transfer(this.mettalexContract.address, collateral, { from: owner });
     await this.collateralToken.approve(this.mettalexContract.address, collateral, {from: account});
   };
 
   const _endRedeeming = async (account) => {
-    await this.collateralToken.setWhitelist(account, false);
-    await this.longPositionToken.setWhitelist(this.mettalexContract.address, false);
-    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false);
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
-    const remainingCollateralToken = new BN((await this.collateralToken.balanceOf(this.mettalexContract.address)).toString());
-    await this.collateralToken.burn(this.mettalexContract.address, remainingCollateralToken);
     await this.collateralToken.approve(this.mettalexContract.address, 0, {from: account});
   };
 
@@ -77,8 +81,8 @@ describe('MettalexContract', () => {
   };
 
   const _makeTASOrder = async (account, positionToken, investment) => {
-    const initialTokens = 10;
-    const requiredCollateral = new BN('25150000000000000');
+    const initialTokens = 6;
+    const requiredCollateral = new BN('15090000000000000');
     await _setupForMinting(account, requiredCollateral);
     await this.mettalexContract.mintPositionTokens(initialTokens, {from: account});
     await _endMinting(account);
@@ -89,20 +93,18 @@ describe('MettalexContract', () => {
   };
 
   const _setupForUpdateSpot = async (account1, account2, collateral) => {
-    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true);
-    await this.longPositionToken.setWhitelist(this.mettalexContract.address, true);
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, true, { from: owner });
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, true, { from: owner });
 
-    await this.collateralToken.mint(this.mettalexContract.address, collateral);
+    await _getCollateral(this.mettalexContract.address, collateral);
     await this.collateralToken.approve(this.mettalexContract.address, collateral, {from: account1});
     await this.collateralToken.approve(this.mettalexContract.address, collateral, {from: account2});
   };
 
   const _endUpdateSpot = async (account1, account2) => {
-    await this.longPositionToken.setWhitelist(this.mettalexContract.address, false);
-    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false);
+    await this.longPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
+    await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
-    const remainingCollateralToken = new BN((await this.collateralToken.balanceOf(this.mettalexContract.address)).toString());
-    await this.collateralToken.burn(this.mettalexContract.address, remainingCollateralToken);
     await this.collateralToken.approve(this.mettalexContract.address, 0, {from: account1});
     await this.collateralToken.approve(this.mettalexContract.address, 0, {from: account2});
   };
@@ -155,8 +157,8 @@ describe('MettalexContract', () => {
   });
 
   describe('Mint position tokens', () => {
-    const tokensToMint = 10;
-    const requiredCollateral = new BN('25150000000000000');
+    const tokensToMint = 6;
+    const requiredCollateral = new BN('15090000000000000');
 
     beforeEach(async () => {
       await _setupForMinting(user, requiredCollateral);
@@ -168,51 +170,45 @@ describe('MettalexContract', () => {
 
     after(async () => {
       await _setupForRedeeming(user, requiredCollateral);
-      await this.mettalexContract.redeemPositionTokens(10, {from: user});
+      await this.mettalexContract.redeemPositionTokens(6, {from: user});
       await _endRedeeming(user);
     });
     
     // TO-DO: Complete upon implementation of settleContract in MettalexContract
     it('should reject mint if contract is settled');
 
-    it('should reject mint from user that is not whitelisted in collateral token', async () => {
-      await this.collateralToken.setWhitelist(user, false);
-
-      await expectRevert(this.mettalexContract.mintPositionTokens(tokensToMint, {from: other}), 'revert');
-    });
-
     it('should reject mint from user if contract is not whitelisted in long position token', async () => {
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, false);
+      await this.longPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
       await expectRevert(this.mettalexContract.mintPositionTokens(tokensToMint, {from: other}), 'revert');
     });
     
     it('should reject mint from user if contract is not whitelisted in short position token', async () => {
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false);
+      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
       await expectRevert(this.mettalexContract.mintPositionTokens(tokensToMint, {from: other}), 'revert');
     });
 
     it('should revert if collateral cannot be transferred due to insufficient collateral funds in user account', async () => {
-      await this.collateralToken.burn(user, requiredCollateral);
+      await _burnCollateral(user);
 
       await expectRevert(this.mettalexContract.mintPositionTokens(tokensToMint, {from: user}), 'revert');
     });
 
     it('should revert if collateral cannot be transferred due to lack of approval to transfer collateral from user', async () => {
-      await this.collateralToken.approve(this.mettalexContract.address, 999, {from: user});
+      await this.collateralToken.approve(this.mettalexContract.address, 0, {from: user});
 
       await expectRevert(this.mettalexContract.mintPositionTokens(tokensToMint, {from: user}), 'revert');
     });
 
-    it('should mint 10 long & 10 short position tokens', async () => {
+    it('should mint 6 long & 6 short position tokens', async () => {
       const receipt = await this.mettalexContract.mintPositionTokens(tokensToMint, {from: user});
 
       await expectEvent(receipt, 'LongPositionTokenMinted', {
         to: user,
         value: new BN(tokensToMint),
-        collateralRequired: new BN('25000000000000000'),
-        collateralFeeRequired: new BN('150000000000000'),
+        collateralRequired: new BN('15000000000000000'),
+        collateralFeeRequired: new BN('90000000000000'),
       });
 
       expect((await this.longPositionToken.balanceOf(user)).toNumber()).to.equal(tokensToMint);
@@ -220,8 +216,8 @@ describe('MettalexContract', () => {
       await expectEvent(receipt, 'ShortPositionTokenMinted', {
         to: user,
         value: new BN(tokensToMint),
-        collateralRequired: new BN('25000000000000000'),
-        collateralFeeRequired: new BN('150000000000000'),
+        collateralRequired: new BN('15000000000000000'),
+        collateralFeeRequired: new BN('90000000000000'),
       });
 
       expect((await this.shortPositionToken.balanceOf(user)).toNumber()).to.equal(tokensToMint);
@@ -229,12 +225,12 @@ describe('MettalexContract', () => {
   });
 
   describe('Redeem position tokens', () => {
-    const tokensToRedeem = 10;
-    const requiredCollateral = new BN('25150000000000000');
+    const tokensToRedeem = 6;
+    const requiredCollateral = new BN('15090000000000000');
 
     before(async () => {
       await _setupForMinting(user, requiredCollateral);
-      await this.mettalexContract.mintPositionTokens(10, {from: user});
+      await this.mettalexContract.mintPositionTokens(6, {from: user});
       await _endMinting(user);
     });
 
@@ -247,38 +243,30 @@ describe('MettalexContract', () => {
     });
   
     it('should revert if sender\'s address is invalid', async () => {
-      await this.collateralToken.setWhitelist(nullAddress, true);
-
-      await this.collateralToken.mint(this.mettalexContract.address, requiredCollateral);
+      await _getCollateral(this.mettalexContract.address, requiredCollateral);
       await expectRevert(this.mettalexContract.redeemPositionTokens(nullAddress, tokensToRedeem), 'INVALID_ADDRESS');
     });
 
-    it('should revert if user is not whitelisted in collateral token', async () => {
-      await this.collateralToken.setWhitelist(user, false);
-
-      await expectRevert(this.mettalexContract.redeemPositionTokens(tokensToRedeem, {from: other}), 'revert');
-    });
-
     it('should revert if contract is not whitelisted in long position token', async () => {
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, false);
+      await this.longPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
-      await expectRevert(this.mettalexContract.redeemPositionTokens(tokensToRedeem, {from: other}), 'revert');
+      await expectRevert(this.mettalexContract.redeemPositionTokens(tokensToRedeem, { from: owner }), 'revert');
     });
 
     it('should revert if contract is not whitelisted in short position token', async () => {
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false);
+      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
-      await expectRevert(this.mettalexContract.redeemPositionTokens(tokensToRedeem, {from: other}), 'revert');
+      await expectRevert(this.mettalexContract.redeemPositionTokens(tokensToRedeem, { from: owner }), 'revert');
     });
 
     it('should revert if collateral cannot be transferred due to insufficient collateral funds in contract\'s collateral pool', async () => {
-      await this.collateralToken.burn(this.mettalexContract.address, requiredCollateral);
+      await _burnCollateral(this.mettalexContract.address);
 
       await expectRevert(this.mettalexContract.redeemPositionTokens(tokensToRedeem, {from: user}), 'revert');
     });
 
     it('should revert if collateral cannot be transferred due to lack of approval to transfer collateral from user', async () => {
-      await this.collateralToken.approve(this.mettalexContract.address, 999, {from: user});
+      await this.collateralToken.approve(this.mettalexContract.address, 0, {from: user});
 
       await expectRevert(this.mettalexContract.mintPositionTokens(tokensToRedeem, {from: user}), 'revert');
     });
@@ -288,10 +276,10 @@ describe('MettalexContract', () => {
     });
 
     it('should revert if sender redeems more than total minted position tokens', async () => {
-      await expectRevert(this.mettalexContract.redeemPositionTokens(11, {from: user}), 'revert');
+      await expectRevert(this.mettalexContract.redeemPositionTokens(7, {from: user}), 'revert');
     });
 
-    it('should redeem 10 long and 10 short position tokens', async () => {
+    it('should redeem 6 long and 6 short position tokens', async () => {
       const initialLongTokens = await this.longPositionToken.balanceOf(user);
       const initialShortTokens = await this.shortPositionToken.balanceOf(user);
 
@@ -299,7 +287,7 @@ describe('MettalexContract', () => {
       await expectEvent(receipt, 'Redeem', {
         to: user,
         burntTokenQuantity: new BN(tokensToRedeem),
-        collateralToReturn: new BN('25000000000000000'),
+        collateralToReturn: new BN('15000000000000000'),
       });
 
       expect((await this.longPositionToken.balanceOf(user)).toNumber()).to.equal(initialLongTokens - tokensToRedeem);
@@ -311,8 +299,8 @@ describe('MettalexContract', () => {
     const tokensToInvest = 2;
 
     before(async () => {
-      await _setupForMinting(user, new BN('25150000000000000'));
-      await this.mettalexContract.mintPositionTokens(10, {from: user});
+      await _setupForMinting(user, new BN('15090000000000000'));
+      await this.mettalexContract.mintPositionTokens(3, {from: user});
       await _endMinting(user);
     });
 
@@ -326,7 +314,7 @@ describe('MettalexContract', () => {
 
     after(async () => {
       await _setupForRedeeming(user, new BN('201200000000000000'));
-      await this.mettalexContract.redeemPositionTokens(8, {from: user});
+      await this.mettalexContract.redeemPositionTokens(1, {from: user});
       await _endRedeeming(user);
     });
 
@@ -391,8 +379,8 @@ describe('MettalexContract', () => {
     const requiredCollateral = new BN('5030000000000000');
 
     before(async () => {
-      await _setupForMinting(user, new BN('25150000000000000'));
-      await this.mettalexContract.mintPositionTokens(10, {from: user});
+      await _setupForMinting(user, new BN('15090000000000000'));
+      await this.mettalexContract.mintPositionTokens(3, {from: user});
       await _endMinting(user);
     });
 
@@ -406,7 +394,7 @@ describe('MettalexContract', () => {
 
     after(async () => {
       await _setupForRedeeming(user, new BN('201200000000000000'));
-      await this.mettalexContract.redeemPositionTokens(8, {from: user});
+      await this.mettalexContract.redeemPositionTokens(1, {from: user});
       await _endRedeeming(user);
     });
     
@@ -419,13 +407,13 @@ describe('MettalexContract', () => {
     });
 
     it('should reject price update if contract is not whitelisted in long position token', async () => {
-      await this.longPositionToken.setWhitelist(this.mettalexContract.address, false);
+      await this.longPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
       await expectRevert(this.mettalexContract.updateSpot(44000000, {from: oracle}), 'WHITELISTED_ONLY');
     });
   
     it('should reject price update if contract is not whitelisted in short position token', async () => {
-      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false);
+      await this.shortPositionToken.setWhitelist(this.mettalexContract.address, false, { from: owner });
 
       await expectRevert(this.mettalexContract.updateSpot(44000000, {from: oracle}), 'WHITELISTED_ONLY');
     });
@@ -504,14 +492,14 @@ describe('MettalexContract', () => {
   });
 
   describe('Clear Settled Trade', () => {
-    it('should revert as long TAS order\'s settle index is greater than price update count', async () => { // depends on prev update spot
+    it('should revert as long TAS order\'s settle index is greater than price update count', async () => {
       await _makeTASOrder(user6, this.longPositionToken, 2);
       await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user6});
 
       await expectRevert(this.mettalexContract.clearLongSettledTrade({from: user6}), 'Can only clear previously settled order');
     });
 
-    it('should revert as short TAS order\'s settle index is greater than price update count', async () => { // prev depend
+    it('should revert as short TAS order\'s settle index is greater than price update count', async () => {
       await _makeTASOrder(user4, this.shortPositionToken, 2);
       await this.collateralToken.approve(this.mettalexContract.address, new BN('5030000000000000'), {from: user4});
 
@@ -530,7 +518,7 @@ describe('MettalexContract', () => {
       expect((await this.longPositionToken.balanceOf(other)).toNumber()).to.equal(initialLongTokens);
       expect((await this.shortPositionToken.balanceOf(other)).toNumber()).to.equal(initialShortTokens);
     });
-    // to-do cover cases of different type of clearing- full contrib, half, none (long/short diff)
+
     it('should clear user\'s long position token investment having some contribution', async () => {
       await _makeTASOrder(user7, this.longPositionToken, 2);
       await _makeTASOrder(user7, this.shortPositionToken, 1);
@@ -578,7 +566,7 @@ describe('MettalexContract', () => {
         collateralQuantity: new BN('0'),
       });
 
-      expect((await this.collateralToken.balanceOf(owner)).toString()).to.equal('0');
+      expect((await this.collateralToken.balanceOf(owner)).toString()).to.equal((initialCollateralTokens).toString());
       expect((await this.shortPositionToken.balanceOf(owner) - 1).toString()).to.equal(initialShortTokens.toString());
     });
 
