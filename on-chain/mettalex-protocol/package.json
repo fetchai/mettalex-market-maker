@@ -1,7 +1,7 @@
 {
   "scripts": {
     "test": "npx mocha --exit --recursive test --timeout 12000",
-    "compile": "truffle compile",
+    "compile": "npx truffle compile",
     "coverage": "npx truffle run coverage"
   },
   "dependencies": {
