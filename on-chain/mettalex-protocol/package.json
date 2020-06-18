@@ -8,9 +8,9 @@
     "bignumber.js": "^7.2.1",
     "coveralls": "^3.0.6",
     "ethereumjs-util": "^5.2.0",
-    "truffle": "^5.0.32",
+    "truffle": "^5.1.23",
     "truffle-privatekey-provider": "1.2.0",
-    "web3": "^1.2.0"
+    "web3": "^1.2.1"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "2.3.0",
