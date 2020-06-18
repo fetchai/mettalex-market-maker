@@ -22,5 +22,8 @@
     "prettier-plugin-solidity": "^1.0.0-alpha.51",
     "solhint": "^3.0.0",
     "solidity-coverage": "^0.7.5"
+  },
+  "engines": {
+    "node": ">=12.17.0"
   }
 }
