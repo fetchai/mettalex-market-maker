@@ -17,6 +17,7 @@
     "@openzeppelin/test-environment": "^0.1.4",
     "@openzeppelin/test-helpers": "^0.5.5",
     "chai": "^4.2.0",
+    "cucumber": "^6.0.5",
     "mocha": "^7.1.2",
     "prettier": "^2.0.5",
     "prettier-plugin-solidity": "^1.0.0-alpha.51",
