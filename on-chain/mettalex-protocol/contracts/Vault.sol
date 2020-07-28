@@ -148,7 +148,7 @@ contract Vault {
         _;
     }
 
-    function _calculateFee() internal returns (uint256) {
+    function _calculateFee(uint256 quantityToMint) internal returns (uint256) {
         if (msg.sender == AUTOMATED_MARKET_MAKER) return 0;
         return COLLATERAL_TOKEN_FEE_PER_UNIT.mul(quantityToMint);
     }
@@ -159,7 +159,7 @@ contract Vault {
 
         IERC20 collateral = IERC20(COLLATERAL_TOKEN_ADDRESS);
         uint256 collateralRequired = COLLATERAL_PER_UNIT.mul(quantityToMint);
-        uint256 collateralFeeRequired = _calculateFee();
+        uint256 collateralFeeRequired = _calculateFee(quantityToMint);
 
         collateral.transferFrom(
             msg.sender,
