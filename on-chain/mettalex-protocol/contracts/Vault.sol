@@ -324,6 +324,14 @@ contract Vault {
         revert("NOT_IMPLEMENTED");
     }
 
+    function updateOracle(address newOracle) external onlyOwner {
+        ORACLE_ADDRESS = newOracle;
+    }
+
+    function updateAutomatedMarketMaker(address newAMM) external onlyOwner {
+        AUTOMATED_MARKET_MAKER = newAMM;
+    }
+
     function addAddressToWhiteList(address contractAddress) external onlyOwner {
         contractWhitelist[contractAddress] = true;
     }
