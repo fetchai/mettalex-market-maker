@@ -25,20 +25,22 @@ def read_config(contracts=None, deploy_date=None, get_related=True):
     antier_deployments = deployments['antier_stg']['kovan']
     antier_deployments['COLLATERAL_TOKEN'] = antier_deployments['USDT']
 
+    vaults = []
     if get_related:
-        for k, v in antier_deployments['related_contracts'].items():
+        for k, v in antier_deployments['vault_contracts'].items():
             antier_deployments[k] = v
             contracts.append(k)
+            vaults.append(k)
 
     contract_details = {}
+    exchange = 'Antier'
     for contract in contracts:
-        if deploy_date is not None:
-            contract_file = os.path.join(cache_dir, '_'.join([contract, deploy_date]) + '.json')
-        elif contract in antier_deployments:
-            contract_file = os.path.join(cache_dir, antier_deployments[contract])
+        if contract in {'BFACTORY', 'SS_BPOOL'}:
+            contract_file = sorted(glob(os.path.join(cache_dir, exchange, contract + '_*.json')))[-1]
+        elif contract in vaults:
+            contract_file = os.path.join(cache_dir, exchange, 'Vault', antier_deployments[contract][0])
         else:
-            # Get latest
-            contract_file = sorted(glob(os.path.join(cache_dir, contract + '_*.json')))[-1]
+            contract_file = os.path.join(cache_dir, exchange, antier_deployments[contract][0])
         with open(contract_file, 'r') as f:
             contract_details[contract] = json.load(f)
 
@@ -142,8 +144,6 @@ def bind_pool():
 
     amount_collateral = 1000
 
-    token_lookup = {contracts[tok].address: contracts[tok] for tok in tokens}
-
     for i in range(len(tokens)):
         tok_name = tokens[i]
         tok_wt = weights[i]
@@ -158,9 +158,17 @@ def bind_pool():
         print(f'{tok_name}: weight {tok_wt} = {denorm_wt}, qty {tok_qty_unit} = {tok_qty}')
         bind_token(w3, pool=pool, tok=tok, balance=tok_qty, dnorm=denorm_wt)
 
+
+def check_pool():
+    w3, contracts = connect()
+    pool = contracts['SS_BPOOL']
+
+    tokens = ['COLLATERAL_TOKEN', 'SSLONG', 'SSSHORT']
+
     # Check token balances
-    for i in range(len(tokens)):
-        pool.functions.getNormalizedWeight(contracts['COLLATERAL_TOKEN'].address).call()
+    for token_name in tokens:
+        wt = pool.functions.getNormalizedWeight(contracts[token_name].address).call() / 10**18
+        print(f'{token_name} has weight {wt} in pool at {pool.address}')
 
     # tok.functions.transfer(dest_address, qty_unitless).transact({'from': acct, 'gas': 1_000_000})
 
