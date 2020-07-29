@@ -75,28 +75,27 @@ def connect(contract_names=None, deploy_date=None, get_related=True):
     return w3, contracts
 
 
-def print_balance(dest_address, contract_details=None):
-    if contract_details is None:
-        contract_names = ['COLLATERAL_TOKEN', 'CULONG', 'CUSHORT', 'SSLONG', 'SSSHORT', 'SRRLONG', 'SRRSHORT',
-                          'SRSCSPRL', 'SRSCSPRS', 'BFACTORY', 'SS_BPOOL']
-        w3, contract_details = connect(contract_names)
-
-    def print_balance(name, address):
-        tok = contract_details[name]
-        tok_address = tok.address
-        tok_decimals = tok.functions.decimals().call()
-        tok_balance = tok.functions.balanceOf(address).call()/ 10 ** tok_decimals
-        tok_symbol = tok.functions.symbol().call()
-        print(f'{name:20} ({tok_address}): {tok_balance:8} {tok_symbol}')
-
-    print(f'Wallet address {dest_address}')
-
-    for contract in contract_details:
-        print_balance(contract, dest_address)
+def print_token_balance(name, tok, holder_address):
+    tok_address = tok.address
+    tok_decimals = tok.functions.decimals().call()
+    tok_balance = tok.functions.balanceOf(holder_address).call()/ 10 ** tok_decimals
+    tok_symbol = tok.functions.symbol().call()
+    print(f'{name:20} ({tok_address}): {tok_balance:8} {tok_symbol}')
 
 
-def deploy_pool():
-    w3, contracts = connect()
+def print_balance(w3, contracts, holder_address=None, tokens=None):
+    if tokens is None:
+        tokens = ['COLLATERAL_TOKEN', 'SSLONG', 'SSSHORT']
+    if holder_address is None:
+        holder_address = w3.eth.defaultAccount
+    eth_balance = w3.eth.getBalance(holder_address) / 10**18
+    print(f'Wallet address {holder_address} ({eth_balance} ETH)')
+    for token in tokens:
+        tok = contracts[token]
+        print_token_balance(token, tok, holder_address)
+
+
+def deploy_pool(w3, contracts):
     factory = contracts['BFACTORY']
     acct = w3.eth.defaultAccount
     tx_hash = factory.functions.newBPool().transact(
@@ -124,25 +123,39 @@ def approve_pool(w3, pool, tok, balance):
 def bind_token(w3, pool, tok, balance, dnorm):
     acct = w3.eth.defaultAccount
     # Approve pool contract for token transfer
-    # approve_pool(w3, pool, tok, balance)
+    approve_pool(w3, pool, tok, balance)
     tx_hash = pool.functions.bind(tok.address, balance, dnorm).transact(
         {'from': acct, 'gas': 1_000_000}
     )
-    print(tx_hash.hex())
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(tx_hash.hex())
 
 
-def bind_pool():
-    w3, contracts = connect()
+def unbind_token(w3, pool, tok):
+    acct = w3.eth.defaultAccount
+    tx_hash = pool.functions.unbind(tok.address).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(tx_hash.hex())
+
+
+def set_fee(w3, pool, fee=0.003):
+    acct = w3.eth.defaultAccount
+    old_fee = (pool.functions.getSwapFee().call()) / 10**18 * 100
+    tx_hash = pool.functions.setSwapFee(int(fee * 10**18)).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    new_fee = (pool.functions.getSwapFee().call()) / 10**18 * 100
+    print(f'Pool at {pool.address} fee changed from {old_fee}% to {new_fee}%')
+
+
+def bind_pool(w3, contracts, amount_collateral=1000):
     pool = contracts['SS_BPOOL']
-
     tokens = ['COLLATERAL_TOKEN', 'SSLONG', 'SSSHORT']
-
     weights = [50, 25, 25]
-
     prices = [1, 50, 50]
-
-    amount_collateral = 1000
 
     for i in range(len(tokens)):
         tok_name = tokens[i]
@@ -159,76 +172,111 @@ def bind_pool():
         bind_token(w3, pool=pool, tok=tok, balance=tok_qty, dnorm=denorm_wt)
 
 
-def check_pool():
-    w3, contracts = connect()
+def unbind_pool(w3, contracts):
     pool = contracts['SS_BPOOL']
+    tokens = ['COLLATERAL_TOKEN', 'SSLONG', 'SSSHORT']
+    for token in tokens:
+        unbind_token(w3, pool, contracts[token])
+
+
+def get_pool_balance(w3, contracts):
+    pool = contracts['SS_BPOOL']
+    # Early exit if no tokens
+    no_tokens = pool.functions.getNumTokens().call() == 0
+    if no_tokens:
+        print(f'Pool at {pool.address} has no tokens bound')
+        return
 
     tokens = ['COLLATERAL_TOKEN', 'SSLONG', 'SSSHORT']
-
     # Check token balances
     for token_name in tokens:
+        tok = contracts[token_name]
         wt = pool.functions.getNormalizedWeight(contracts[token_name].address).call() / 10**18
-        print(f'{token_name} has weight {wt} in pool at {pool.address}')
-
-    # tok.functions.transfer(dest_address, qty_unitless).transact({'from': acct, 'gas': 1_000_000})
-
+        balance = pool.functions.getBalance(tok.address).call() / 10 ** (tok.functions.decimals().call())
+        print(f'Pool at {pool.address} has {token_name} weight {wt} and balance {balance} ')
 
 
-def transfer_ctk(dest_address, qty, tok_name='COLLATERAL_TOKEN'):
-    # Transfer funds from the admin to the specified destination address
-    contract_names = [tok_name]
-    w3, contract_details = connect(contract_names)
-    tok = contract_details[tok_name]
+def get_spot_price(w3, pool, tok_in, tok_out, unitless=True):
+    # Spot price is number of tok_in required for 1 tok_out (unitless)
+    spot_price = pool.functions.getSpotPrice(
+        tok_in.address, tok_out.address
+    ).call()
+    if not unitless:
+        # Take decimals into account
+        spot_price = spot_price * 10**(
+                tok_out.functions.decimals().call()
+                - tok_in.functions.decimals().call()
+                - 18)
+    return spot_price
+
+
+def calc_out_given_in(w3, pool, tok_in, tok_out, qty_in, unitless=True):
+    balance_in = pool.functions.getBalance(tok_in.address).call()
+    wt_in = pool.functions.getDenormalizedWeight(tok_in.address).call()
+
+    balance_out = pool.functions.getBalance(tok_out.address).call()
+    wt_out = pool.functions.getDenormalizedWeight(tok_out.address).call()
+
+    qty_in_unitless = int(qty_in * 10**(tok_in.functions.decimals().call()))
+
+    fee = pool.functions.getSwapFee().call()
+
+    out_tokens = pool.functions.calcOutGivenIn(
+        balance_in, wt_in, balance_out, wt_out, qty_in_unitless, fee
+    ).call()
+    if not unitless:
+        out_tokens /= 10**(tok_out.functions.decimals().call())
+    return out_tokens
+
+
+def set_public_swap(w3, pool, public=False):
     acct = w3.eth.defaultAccount
-    decimals = tok.functions.decimals().call()
-
-    admin_balance = w3.fromWei(w3.eth.getBalance(acct), 'ether')
-    print(f'Admin has {admin_balance:0.5f} ETH')
-
-    def print_balance(name, address):
-        tok_balance = tok.functions.balanceOf(address).call()/ 10 ** decimals
-        print(f'{name}: {tok_balance}')
-
-    print('Before transfer')
-    print_balance('Admin', w3.eth.defaultAccount)
-    print_balance('Dest', dest_address)
-    qty_unitless = int(qty * 10**decimals)
-    tok_symbol = tok.functions.symbol().call()
-    print(f'Transferring {qty} {tok_symbol} tokens ({qty_unitless} unitless) to {dest_address}')
-    tok.functions.transfer(dest_address, qty_unitless).transact({'from': acct, 'gas': 1_000_000})
+    tx_hash = pool.functions.setPublicSwap(public).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    return tx_hash
 
 
-def handler(request):
-    # Hook for cloud function version
-    request_json = request.get_json(silent=True)
-    qty = float(request_json['qty'])
-    dest_address = request_json['address']
-    tok_name = request_json['token']
-    transfer_ctk(dest_address=dest_address, qty=qty, tok_name=tok_name)
+def swap_amount_in(w3, pool, tok_in, qty_in, tok_out, min_qty_out=None, max_price=None):
+    acct = w3.eth.defaultAccount
+
+    qty_in_unitless = int(qty_in * 10**(tok_in.functions.decimals().call()))
+
+    if qty_in_unitless > tok_in.functions.allowance(acct, pool.address).call():
+        approve_pool(w3, pool, tok_in, qty_in_unitless)
+
+    if min_qty_out is None:
+        # Default to allowing 10% slippage
+        spot_price = get_spot_price(w3, pool, tok_in, tok_out, unitless=False)
+        min_qty_out = qty_in / spot_price * 0.9
+        print(f'Minimum output token quantity not specified: using {min_qty_out}')
+
+    if max_price is None:
+        spot_price_unitless = get_spot_price(w3, pool, tok_in, tok_out)
+        max_price = int(spot_price_unitless * 1/0.9)
+        print(f'Max price not specified: using {max_price}')
+
+    min_qty_out_unitless = int(min_qty_out * 10**(tok_out.functions.decimals().call()))
+
+    tx_hash = pool.functions.swapExactAmountIn(
+        tok_in.address, qty_in_unitless,
+        tok_out.address, min_qty_out_unitless,
+        max_price
+    ).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    return tx_hash
 
 
 if __name__ == '__main__':
     """
     Example usage:
-    # Transfer tokens
-    (feature-token) >> python setup_testnet_account.py -d 0x9e0b3Ed7FEB54523Bf037e20D237e1b375c8342F -q 100 -t SSSHORT -a transfer
-    Admin has 1.65952 ETH
-    Before transfer
-    Admin: 8290.9999
-    Dest: 0.0
-
     
-    # Check balance
-    (feature-token) >> python setup_testnet_account.py -d 0x9e0b3Ed7FEB54523Bf037e20D237e1b375c8342F -a balance
-    Wallet address 0x9e0b3Ed7FEB54523Bf037e20D237e1b375c8342F
-    COLLATERAL_TOKEN     (0x160574AcC16EBBe6e46FD4A35Ab370f2cA335324):  10000.0 USDT
-    CULONG               (0xcA4A999Ac7f64B9dF74Ce40034ea283791A51A5c):      0.0 CULONG
-    CUSHORT              (0x669cF563b614A328beC95B284a7edD403913351D):      0.0 CUSHORT
-    SSLONG               (0x8DAcf3Dafa0243C4C219CC23f7A2dA84412042CF):    100.0 SSLONG
-    SSSHORT              (0x2FA92E7352636D0dd7Cf32097600E50e1898Fb68):    100.0 SSSHORT
-
     """
-
+    # Copy from setup_testnet_accounts
+    # TODO: replace arguments to call API above
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--dest_address', '-d', dest='dest_address', default='',
@@ -249,6 +297,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     if args.action == 'transfer':
-        transfer_ctk(args.dest_address, float(args.qty), args.token_name)
-    elif args.action == 'balance':
-        print_balance(args.dest_address)
+        pass
