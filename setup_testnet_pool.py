@@ -230,7 +230,7 @@ def bind_pool(
 ):
     """Main pool creation entrypoint: bind list of tokens with weights and balances
 
-    :param w3:
+    :param w3: Web3
     :param contracts:
     :param pool_name:
     :param tokens:
