@@ -15,6 +15,6 @@ Feature: Token Redeeming
         And "2500000000000000" USDT are sent to the caller
 
     Scenario: AMM tries to Redeem tokens
-        When Normal user tries to Redeem 1 token
+        When AMM user tries to Redeem 1 token
         Then Fee of 0 USDT is deducted
         And "2500000000000000" USDT are sent to the caller

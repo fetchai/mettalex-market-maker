@@ -14,6 +14,6 @@ Feature: Token Minting
         And "2500000000000000" USDT are locked as collateral
 
     Scenario: AMM tries to mint tokens
-        When Normal user tries to mint 1 token pair
+        When AMM user tries to mint 1 token pair
         Then Fee of 0 USDT is deducted
         And "2500000000000000" USDT are locked as collateral
