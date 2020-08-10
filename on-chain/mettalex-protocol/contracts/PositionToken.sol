@@ -266,6 +266,8 @@ contract PositionToken is StandardToken, Ownable {
     string public symbol;
     uint8 public decimals = 18;
     bool public paused = false;
+    bool public settled = false;
+    uint8 public version;
 
     mapping(address => bool) public whitelist;
 
