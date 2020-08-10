@@ -326,6 +326,14 @@ contract PositionToken is StandardToken, Ownable {
     }
 
     /**
+     * @dev Throws if the contract is settled
+     */
+    modifier notSettled() {
+        require(!settled, "ALREADY_SETTLED");
+        _;
+    }
+
+    /**
      * @dev Changes the whitelist status of a user.
      * @param who address The address of user whose whitelisted value is to be modified.
      * @param enable bool The boolean value indicating whether user is whitelisted.
