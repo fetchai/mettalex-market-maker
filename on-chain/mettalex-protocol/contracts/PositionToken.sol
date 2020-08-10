@@ -285,11 +285,13 @@ contract PositionToken is StandardToken, Ownable {
     constructor(
         string memory _name,
         string memory _symbol,
-        uint8 _decimals
+        uint8 _decimals,
+        uint8 _version
     ) public {
         name = _name;
         symbol = _symbol;
         decimals = _decimals;
+        version = _version;
         balances[msg.sender] = totalSupply;
         whitelist[msg.sender] = true;
         paused = false;
