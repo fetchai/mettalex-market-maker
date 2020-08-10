@@ -343,6 +343,14 @@ contract PositionToken is StandardToken, Ownable {
     }
 
     /**
+     * @dev Changes the whitelist status of a user.
+     */
+    function updateNameToSettled() public onlyOwner notSettled {
+        settled = true;
+        name = string(abi.encodePacked(name, " (settled)"));
+    }
+
+    /**
      * @dev Mints position tokens for a user.
      * @param _to address The address of beneficiary.
      * @param _value uint256 The amount of tokens to be minted.
