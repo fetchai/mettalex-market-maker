@@ -1,11 +1,11 @@
-const { accounts, contract } = require('@openzeppelin/test-environment');
+/* const { accounts, contract } = require('@openzeppelin/test-environment');
 const { expect } = require('chai');
 
 const { BN, expectEvent, expectRevert } = require('@openzeppelin/test-helpers');
 
 const CoinToken = contract.fromArtifact('CoinToken');
 const MettalexContract = contract.fromArtifact('MettalexContract');
-const PositionToken = contract.fromArtifact('PositionToken');
+const PositionToken = contract.fromArtifact('PositionTokenOld');
 
 describe('MettalexContract', () => {
   const [owner, oracle, user, user2, user3, user4, user5, user6, user7, other] = accounts;
@@ -671,3 +671,4 @@ describe('MettalexContract', () => {
     });
   });
 });
+ */
