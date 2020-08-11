@@ -266,6 +266,8 @@ contract PositionToken is StandardToken, Ownable {
     string public symbol;
     uint8 public decimals = 18;
     bool public paused = false;
+    bool public settled = false;
+    uint8 public version;
 
     mapping(address => bool) public whitelist;
 
@@ -283,11 +285,13 @@ contract PositionToken is StandardToken, Ownable {
     constructor(
         string memory _name,
         string memory _symbol,
-        uint8 _decimals
+        uint8 _decimals,
+        uint8 _version
     ) public {
         name = _name;
         symbol = _symbol;
         decimals = _decimals;
+        version = _version;
         balances[msg.sender] = totalSupply;
         whitelist[msg.sender] = true;
         paused = false;
@@ -322,12 +326,28 @@ contract PositionToken is StandardToken, Ownable {
     }
 
     /**
+     * @dev Throws if the contract is settled
+     */
+    modifier notSettled() {
+        require(!settled, "ALREADY_SETTLED");
+        _;
+    }
+
+    /**
      * @dev Changes the whitelist status of a user.
      * @param who address The address of user whose whitelisted value is to be modified.
      * @param enable bool The boolean value indicating whether user is whitelisted.
      */
     function setWhitelist(address who, bool enable) public onlyOwner {
         whitelist[who] = enable;
+    }
+
+    /**
+     * @dev Changes the whitelist status of a user.
+     */
+    function updateNameToSettled() public onlyOwner notSettled {
+        settled = true;
+        name = string(abi.encodePacked(name, " (settled)"));
     }
 
     /**
