@@ -191,17 +191,13 @@ contract Vault {
         AUTOMATED_MARKET_MAKER = newAMM;
     }
 
-    function priceUpdater() external view returns (address) {
-        return ORACLE_ADDRESS;
-    }
-
     // Overloaded method to redeem collateral to sender address
     function redeemPositions(uint256 quantityToRedeem) external {
         redeemPositions(msg.sender, quantityToRedeem);
     }
 
     function redeemPositions(
-        address to_address, // Destination address for collateral redeemed
+        address toAddress, // Destination address for collateral redeemed
         uint256 quantityToRedeem
     ) public {
         IToken long = IToken(LONG_POSITION_TOKEN);
@@ -213,13 +209,9 @@ contract Vault {
         uint256 collateralReturned = COLLATERAL_PER_UNIT.mul(quantityToRedeem);
         // Destination address may not be the same as sender e.g. send to
         // exchange wallet receive funds address
-        collateral.transfer(to_address, collateralReturned);
+        collateral.transfer(toAddress, collateralReturned);
 
-        emit PositionsRedeemed(
-            to_address,
-            quantityToRedeem,
-            collateralReturned
-        );
+        emit PositionsRedeemed(toAddress, quantityToRedeem, collateralReturned);
     }
 
     function _settle(
