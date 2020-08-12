@@ -1,13 +1,15 @@
 {
   "manifestVersion": "2.2",
-  "contracts": {},
+  "contracts": {
+    "BFactory": "BFactory"
+  },
   "dependencies": {},
   "name": "mettalex-balancer",
   "version": "0.1.0",
   "compiler": {
     "compilerSettings": {
       "optimizer": {
-        "enabled": false,
+        "enabled": true,
         "runs": "200"
       }
     },
