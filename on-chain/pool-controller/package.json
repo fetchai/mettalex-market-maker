@@ -1,11 +1,10 @@
 {
   "name": "pool-controller",
   "version": "1.0.0",
-  "description": "",
   "main": "networks.js",
   "dependencies": {
     "@openzeppelin/cli": "^2.8.2",
-    "@openzeppelin/contracts": "^2.5.1"
+    "@openzeppelin/contracts-ethereum-package": "^2.5.0"
   },
   "devDependencies": {},
   "scripts": {
@@ -13,5 +12,6 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "description": ""
 }

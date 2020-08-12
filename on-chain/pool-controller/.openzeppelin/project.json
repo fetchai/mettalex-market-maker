@@ -11,5 +11,6 @@
     "typechain": {
       "enabled": false
     }
-  }
+  },
+  "telemetryOptIn": true
 }
