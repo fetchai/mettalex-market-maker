@@ -7,6 +7,14 @@ deploy_controller:
 deploy_vault:
 	npx oz deploy -k regular -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 yVault 0xCfEB869F69431e42cdB54A4F4f105C19C080A601 0x9561C133DD8580860B6b7E504bC5Aa500f0f06a7
 
+set_strategy:
+	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0x9561C133DD8580860B6b7E504bC5Aa500f0f06a7 --method setStrategy --args 0xCfEB869F69431e42cdB54A4F4f105C19C080A601,0x9b1f7f645351af3631a656421ed2e40f2802e6c0
+
+deposit:
+	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xe982E462b094850F12AF94d21D470e21bE9D0E9C --method deposit --args 1000000000
+
+earn:
+	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xe982E462b094850F12AF94d21D470e21bE9D0E9C --method earn
 
 contracts/yVault.sol:
 	echo 'Copy from https://etherscan.io/address/0x5dbcf33d8c2e976c6b560249878e6f1491bca25c#code'

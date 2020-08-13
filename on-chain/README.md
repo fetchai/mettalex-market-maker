@@ -76,5 +76,10 @@ Admin deploys liquidity pool
 * Account 0 deploys Controller to `0x9561C133DD8580860B6b7E504bC5Aa500f0f06a7`
 * Account 0 deploys yVault to `0xe982E462b094850F12AF94d21D470e21bE9D0E9C`
 
+Admin deploys Balancer pool controller
 
+    Deprecated: Account 0 deploys StrategyBalancerMettalex to `0x59d3631c86BbE35EF041872d502F218A39FBa150`~~
+* Account 0 deploys upgradeable StrategyBalancerMettalex to`0x9b1f7f645351af3631a656421ed2e40f2802e6c0`
 
+Admin connects Balancer pool controller to the liquidity pool vault controller
+* Account 0 calls 

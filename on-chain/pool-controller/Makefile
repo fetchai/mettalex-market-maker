@@ -1,6 +1,14 @@
 build: contracts/StrategyBalancerMettalex.sol
 	npx oz compile
 
+
+deploy:
+	npx oz deploy -k upgradeable -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 StrategyBalancerMettalex 0x9561C133DD8580860B6b7E504bC5Aa500f0f06a7
+
+
+upgrade:
+	npx oz upgrade -n development --init initialize --args 0x9561C133DD8580860B6b7E504bC5Aa500f0f06a7 StrategyBalancerMettalex
+
 init:
 	npm init -y
 	npm install @openzeppelin/cli
