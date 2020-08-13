@@ -118,14 +118,52 @@ interface Controller {
     function vaults(address) external view returns (address);
 }
 
-interface Balancer {
-    function joinPool(uint,uint[] calldata) external;
-    function exitPool(uint,uint[] calldata) external;
+interface BPool {
+    function isPublicSwap() external view returns (bool);
+    function isFinalized() external view returns (bool);
+    function isBound(address t) external view returns (bool);
+    function getNumTokens() external view returns (uint);
+    function getCurrentTokens() external view returns (address[] memory tokens);
+    function getFinalTokens() external view returns (address[] memory tokens);
+    function getDenormalizedWeight(address token) external view returns (uint);
+    function getTotalDenormalizedWeight() external view returns (uint);
+    function getNormalizedWeight(address token) external view returns (uint);
+    function getBalance(address token) external view returns (uint);
+    function getSwapFee() external view returns (uint);
+    function getController() external view returns (address);
+
+    function setSwapFee(uint swapFee) external;
+    function setController(address manager) external;
+    function setPublicSwap(bool public_) external;
+    function finalize() external;
+    function bind(address token, uint balance, uint denorm) external;
+    function rebind(address token, uint balance, uint denorm) public;
+    function unbind(address token) external;
+    function gulp(address token) external;
+
+    function getSpotPrice(address tokenIn, address tokenOut) external view returns (uint spotPrice);
+    function getSpotPriceSansFee(address tokenIn, address tokenOut) external view returns (uint spotPrice);
+
+    function calcSpotPrice(
+        uint tokenBalanceIn,
+        uint tokenWeightIn,
+        uint tokenBalanceOut,
+        uint tokenWeightOut,
+        uint swapFee
+    ) public pure returns (uint spotPrice);
+
+    function calcOutGivenIn(
+        uint tokenBalanceIn,
+        uint tokenWeightIn,
+        uint tokenBalanceOut,
+        uint tokenWeightOut,
+        uint tokenAmountIn,
+        uint swapFee
+    ) public pure returns (uint tokenAmountOut);
 }
 
-interface MStable {
-    function mint(address, uint) external;
-    function redeem(address, uint) external;
+interface MettalexVault {
+
 }
 
 /*
@@ -155,10 +193,15 @@ contract StrategyBalancerMTA {
     using Address for address;
     using SafeMath for uint256;
 
-    address constant public want = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    // ganache --deterministic USDT
+    address constant public want = address(0xCfEB869F69431e42cdB54A4F4f105C19C080A601);
     address constant public mUSD = address(0xe2f2a5C287993345a840Db3B0845fbC70f5935a5);
+
     address constant public balancer = address(0x72Cd8f4504941Bf8c5a21d1Fd83A96499FD71d2C);
 
+    address constant public mettalex_vault = address(0xe982E462b094850F12AF94d21D470e21bE9D0E9C);
+    address constant public long_token = address(0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B);
+    address constant public short_token = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
 
     address public governance;
     address public controller;
@@ -220,8 +263,10 @@ contract StrategyBalancerMTA {
     function withdraw(IERC20 _asset) external returns (uint balance) {
         require(msg.sender == controller, "!controller");
         require(address(_asset) != want, "!c");
-        require(address(_asset) != mUSD, "!c");
         require(address(_asset) != balancer, "!c");
+        require(address(_asset) != mettalex_vault, "!c");
+        require(address(_asset) != long_token, "!c");
+        require(address(_asset) != short_token, "!c");
         balance = _asset.balanceOf(address(this));
         _asset.safeTransfer(controller, balance);
     }
