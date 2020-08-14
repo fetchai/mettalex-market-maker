@@ -267,7 +267,7 @@ contract PositionToken is StandardToken, Ownable {
     uint8 public decimals = 18;
     bool public paused = false;
     bool public settled = false;
-    uint8 public version;
+    uint256 public version;
 
     mapping(address => bool) public whitelist;
 
@@ -286,7 +286,7 @@ contract PositionToken is StandardToken, Ownable {
         string memory _name,
         string memory _symbol,
         uint8 _decimals,
-        uint8 _version
+        uint256 _version
     ) public {
         name = _name;
         symbol = _symbol;
