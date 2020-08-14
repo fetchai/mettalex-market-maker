@@ -5,24 +5,16 @@
     "coverage": "npx truffle run coverage"
   },
   "dependencies": {
-    "bignumber.js": "^7.2.1",
-    "coveralls": "^3.0.6",
-    "ethereumjs-util": "^5.2.0",
-    "truffle": "^5.1.23",
-    "truffle-privatekey-provider": "1.2.0",
-    "web3": "^1.2.1"
+    "truffle": "^5.1.39",
+    "web3": "^1.2.1",
+    "@openzeppelin/contracts": "2.3.0"
   },
   "devDependencies": {
-    "@openzeppelin/contracts": "2.3.0",
     "@openzeppelin/test-environment": "^0.1.4",
     "@openzeppelin/test-helpers": "^0.5.5",
     "chai": "^4.2.0",
-    "cucumber": "^6.0.5",
     "mocha": "^7.1.2",
-    "prettier": "^2.0.5",
-    "prettier-plugin-solidity": "^1.0.0-alpha.51",
-    "solhint": "^3.0.0",
-    "solidity-coverage": "^0.7.5"
+    "solidity-coverage": "^0.7.9"
   },
   "engines": {
     "node": ">=12.17.0"
