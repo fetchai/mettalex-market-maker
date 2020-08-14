@@ -2,10 +2,10 @@ build: contracts/TetherToken.sol
 	npx oz compile
 
 deploy:
-	npx oz deploy -k regular -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 TetherToken 100000000000 'Tether USD' USDT 6
+	npx oz deploy -k regular -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 TetherToken 1560000000000000000000000000 'Tether USD' USDT 18
 
 approve_pool_vault:
-	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xCfEB869F69431e42cdB54A4F4f105C19C080A601 --method approve --args 0xe982E462b094850F12AF94d21D470e21bE9D0E9C,100000000000
+	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xCfEB869F69431e42cdB54A4F4f105C19C080A601 --method approve --args 0xe982E462b094850F12AF94d21D470e21bE9D0E9C,1560000000000000000000000000
 
 contracts/TetherToken.sol:
 	echo 'Copy from https://etherscan.io/address/0xdac17f958d2ee523a2206206994597c13d831ec7#code'

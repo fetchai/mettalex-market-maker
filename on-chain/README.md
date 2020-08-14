@@ -70,7 +70,8 @@ Admin deploys coin
 Admin deploys position tokens and vault
 * Account 0 deploys Mettalex long position token to `0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B`
 * Account 0 deploys Mettalex short positon token to `0xC89Ce4735882C9F0f0FE26686c53074E09B0D550`
-* Account 0 deploys Mettalex Vault to `0xe982E462b094850F12AF94d21D470e21bE9D0E9C`
+* Account 0 deploys Mettalex Vault to `0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb`
+* Account 0 whitelists Mettalex Vault to mint long and short tokens
  
 Admin deploys liquidity pool
 * Account 0 deploys Controller to `0x9561C133DD8580860B6b7E504bC5Aa500f0f06a7`

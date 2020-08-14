@@ -8,6 +8,7 @@ deploy:
 	make --directory=mettalex-yearn deploy_controller
 	make --directory=mettalex-yearn deploy_vault
 	make --directory=pool-controller deploy
+	make --directory=mettalex-vault whitelist_vault
 	make --directory=mettalex-yearn set_strategy
 	make --directory=mettalex-coin approve_pool_vault
 	make --directory=mettalex-yearn deposit

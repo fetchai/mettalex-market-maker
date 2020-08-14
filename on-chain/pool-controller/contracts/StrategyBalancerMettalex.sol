@@ -200,7 +200,7 @@ contract StrategyBalancerMettalex {
 
     address public balancer; // = address(0x72Cd8f4504941Bf8c5a21d1Fd83A96499FD71d2C);
 
-    address public mettalex_vault; // = address(0xe982E462b094850F12AF94d21D470e21bE9D0E9C);
+    address public mettalex_vault; // = address(0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb);
     address public long_token; // = address(0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B);
     address public short_token; // = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
 
@@ -217,7 +217,7 @@ contract StrategyBalancerMettalex {
         require(!initialized, "Already initialized");
         want = address(0xCfEB869F69431e42cdB54A4F4f105C19C080A601);
         balancer = address(0x72Cd8f4504941Bf8c5a21d1Fd83A96499FD71d2C);
-        mettalex_vault = address(0xe982E462b094850F12AF94d21D470e21bE9D0E9C);
+        mettalex_vault = address(0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb);
         long_token = address(0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B);
         short_token = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
         governance = msg.sender;
@@ -241,16 +241,18 @@ contract StrategyBalancerMettalex {
         uint _balance = IERC20(want).balanceOf(address(this));
         uint _want = _balance.div(2);
         IERC20(want).safeApprove(mettalex_vault, 0);
-        IERC20(want).safeApprove(mettalex_vault, _want);
+        IERC20(want).safeApprove(mettalex_vault, 1560000000000000000000000000);
+
+//        IERC20(want).safeApprove(mettalex_vault, _want);
 
         MettalexVault mVault = MettalexVault(mettalex_vault);
         uint coinPerUnit = mVault.COLLATERAL_PER_UNIT();
-//        uint feePerUnit = mVault.COLLATERAL_TOKEN_FEE_PER_UNIT();
-//        uint totalPerUnit = coinPerUnit.add(feePerUnit);
-//        uint qtyToMint = _want.div(totalPerUnit);
+        uint feePerUnit = mVault.COLLATERAL_TOKEN_FEE_PER_UNIT();
+        uint totalPerUnit = coinPerUnit.add(feePerUnit);
+        uint qtyToMint = _want.div(totalPerUnit);
 
         uint _before = _balance;
-//        mVault.mintPositions(1);
+        mVault.mintPositions(1); // qtyToMint);
 
         // Then supply minted tokens and remaining collateral to Balancer pool
 
