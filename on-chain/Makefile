@@ -1,7 +1,7 @@
 deploy:
 	make --directory=mettalex-balancer deploy_pool_factory
 	make --directory=mettalex-balancer deploy_balancer_amm
-#	make --directory=mettalex-coin deploy
+#	make --directory=mettalex-coin deploy  # NB: Pool controller fails if actual USDT contract is used
 	make --directory=mettalex-vault deploy_coin
 	make --directory=mettalex-vault deploy_long
 	make --directory=mettalex-vault deploy_short
@@ -13,5 +13,9 @@ deploy:
 	make --directory=mettalex-yearn set_strategy
 #	make --directory=mettalex-coin approve_pool_vault
 	make --directory=mettalex-vault approve_pool_vault
+
+earn:
+	# python3 setup_contracts.py  # TODO: Need to call this in correct pipenv
 	make --directory=mettalex-yearn deposit
 	make --directory=mettalex-yearn earn
+	make --directory=mettalex-vault balanceOf_pool_controller

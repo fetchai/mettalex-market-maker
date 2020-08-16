@@ -216,7 +216,7 @@ contract StrategyBalancerMettalex {
     function initialize(address _controller) public {
         require(!initialized, "Already initialized");
         want = address(0xCfEB869F69431e42cdB54A4F4f105C19C080A601);
-        balancer = address(0x72Cd8f4504941Bf8c5a21d1Fd83A96499FD71d2C);
+        balancer = address(0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78);
         mettalex_vault = address(0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb);
         long_token = address(0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B);
         short_token = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
@@ -238,12 +238,13 @@ contract StrategyBalancerMettalex {
 
     function deposit() external {
         require(breaker == false, "!breaker");
+        // TODO: Unbind tokens from Balancer pool and redeem position tokens against vault
+
+        // Get coin token balance and allocate half to minting position tokens
         uint _balance = IERC20(want).balanceOf(address(this));
         uint _want = _balance.div(2);
         IERC20(want).safeApprove(mettalex_vault, 0);
-        IERC20(want).safeApprove(mettalex_vault, 1560000000000000000000000000);
-
-//        IERC20(want).safeApprove(mettalex_vault, _want);
+        IERC20(want).safeApprove(mettalex_vault, _want);
 
         MettalexVault mVault = MettalexVault(mettalex_vault);
         uint coinPerUnit = mVault.collateralPerUnit();
@@ -252,9 +253,22 @@ contract StrategyBalancerMettalex {
         uint qtyToMint = _want.div(totalPerUnit);
 
         uint _before = _balance;
-        mVault.mintPositions(1000000); // qtyToMint);
+        mVault.mintPositions(qtyToMint);
+
+        // Approve transfer Balancer balancer pool
+        IERC20(want).safeApprove(balancer, 0);
+        IERC20(want).safeApprove(balancer, 9571250000000000000000);
+        IERC20(long_token).safeApprove(balancer, 0);
+        IERC20(long_token).safeApprove(balancer, 95000000);
+        IERC20(short_token).safeApprove(balancer, 0);
+        IERC20(short_token).safeApprove(balancer, 95000000);
 
         // Then supply minted tokens and remaining collateral to Balancer pool
+        Balancer bPool = Balancer(balancer);
+        bPool.bind(want, 9571250000000000000000, 25000000000000000000);
+        bPool.bind(long_token, 95000000, 12500000000000000000);
+        bPool.bind(short_token, 95000000, 12500000000000000000);
+
 
 //        uint _after = IERC20(want).balanceOf(address(this));
 //        supply = supply.add(_before.sub(_after));

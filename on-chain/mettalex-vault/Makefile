@@ -27,8 +27,12 @@ whitelist_vault:
 	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xC89Ce4735882C9F0f0FE26686c53074E09B0D550 --method setWhitelist --args 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb,true
 
 test_mint:
-	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb --method mintPositions --args 1000000
+	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb --method mintPositions --args 100000000
 
+balanceOf_pool_controller:
+	npx oz call -n development --to 0xCfEB869F69431e42cdB54A4F4f105C19C080A601 --method balanceOf --args 0x9b1f7F645351AF3631a656421eD2e40f2802E6c0
+	npx oz call -n development --to 0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B --method balanceOf --args 0x9b1f7F645351AF3631a656421eD2e40f2802E6c0
+	npx oz call -n development --to 0xC89Ce4735882C9F0f0FE26686c53074E09B0D550 --method balanceOf --args 0x9b1f7F645351AF3631a656421eD2e40f2802E6c0
 
 contracts/Vault.sol:
 	cp ../../../mettalex-protocol/contracts/Vault.sol contracts

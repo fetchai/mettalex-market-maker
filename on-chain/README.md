@@ -65,7 +65,10 @@ Admin deploys Balancer Pool Factory and creates Balancer Pool
 * Account 0 calls newBPool to create BPool at `0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78`
 
 Admin deploys coin 
+NB: the USDT contract in mettalex-coin project doesn't seem to work in the end to end flow, failing
+at the mintPositions step.  Currently using the CoinToken contract from mettalex-vault.
 * Account 0 deploys USDT to `0xCfEB869F69431e42cdB54A4F4f105C19C080A601`
+* Account 0 deploys Mettalx CoinToken (USDT) to `0xCfEB869F69431e42cdB54A4F4f105C19C080A601`
  
 Admin deploys position tokens and vault
 * Account 0 deploys Mettalex long position token to `0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B`
@@ -80,7 +83,7 @@ Admin deploys liquidity pool
 Admin deploys Balancer pool controller
 
     Deprecated: Account 0 deploys StrategyBalancerMettalex to `0x59d3631c86BbE35EF041872d502F218A39FBa150`~~
-* Account 0 deploys upgradeable StrategyBalancerMettalex to`0x9b1f7f645351af3631a656421ed2e40f2802e6c0`
+* Account 0 deploys upgradeable StrategyBalancerMettalex to`0x9b1f7F645351AF3631a656421eD2e40f2802E6c0`
 
 Admin connects Balancer pool controller to the liquidity pool vault controller
 * Account 0 calls 
