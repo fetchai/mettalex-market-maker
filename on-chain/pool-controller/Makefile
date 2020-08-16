@@ -14,4 +14,5 @@ init:
 	npm install @openzeppelin/cli
 	npm install @openzeppelin/contracts-ethereum-package@2.5
 	npm audit fix
+	rm -rf .openzeppelin
 	npx oz init pool-controller --no-interactive

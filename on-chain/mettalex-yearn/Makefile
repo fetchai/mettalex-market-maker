@@ -27,4 +27,5 @@ init:
 	npm install @openzeppelin/cli
 	npm install @openzeppelin/contracts@2.5
 	npm audit fix
+	rm -rf .openzeppelin
 	npx oz init mettalex-yearn --no-interactive

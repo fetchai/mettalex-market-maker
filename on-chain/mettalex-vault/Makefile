@@ -15,6 +15,10 @@ whitelist_vault:
 	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B --method setWhitelist --args 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb,true
 	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xC89Ce4735882C9F0f0FE26686c53074E09B0D550 --method setWhitelist --args 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb,true
 
+test_mint:
+	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb --method mintPositions --args 1000000
+
+
 contracts/Vault.sol:
 	cp ../../../mettalex-protocol/contracts/Vault.sol contracts
 
@@ -25,6 +29,7 @@ contracts/PositionTokenV2.sol:
 init:
 	npm init -y
 	npm install @openzeppelin/cli
-	npm install @openzeppelin/contracts@2.5
+	npm install @openzeppelin/contracts@2.3
 	npm audit fix
-	npx oz init --no-interactive
+	rm -rf .openzeppelin
+	npx oz init mettalex-vault --no-interactive
