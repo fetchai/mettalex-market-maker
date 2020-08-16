@@ -1,7 +1,18 @@
-build: contracts/Vault.sol contracts/PositionTokenV2.sol
+build: contracts/vault/Vault.sol contracts/tokens/PositionToken.sol contracts/tokens/CoinToken.sol
 	npx oz compile
 
+# Coin token in this project - should be able to use mettalex-coin but running into integration issues
+deploy_coin:
+	npx oz deploy -k regular -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 CoinToken 'Tether USD' USDT 18
 
+approve_pool_vault:
+	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xCfEB869F69431e42cdB54A4F4f105C19C080A601 --method approve --args 0xe982E462b094850F12AF94d21D470e21bE9D0E9C,1560000000000000000000000000
+
+approve_mettalex_vault:
+	# For testing mint operation with mettalex-vault directly
+	npx oz send-tx -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 --to 0xCfEB869F69431e42cdB54A4F4f105C19C080A601 --method approve --args 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb,1560000000000000000000000000
+
+# Position tokens
 deploy_long:
 	npx oz deploy -k regular -n development -f 0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1 PositionToken 'Long Position' LTOK 6 1
 

@@ -163,8 +163,8 @@ interface Balancer {
 }
 
 interface MettalexVault {
-    function COLLATERAL_PER_UNIT() external view returns (uint _collateralPerUnit);
-    function COLLATERAL_TOKEN_FEE_PER_UNIT() external view returns (uint _collateralFeePerUnit);
+    function collateralPerUnit() external view returns (uint _collateralPerUnit);
+    function collateralTokenFeePerUnit() external view returns (uint _collateralFeePerUnit);
     function mintPositions(uint qtyToMint) external;
 }
 
@@ -246,13 +246,13 @@ contract StrategyBalancerMettalex {
 //        IERC20(want).safeApprove(mettalex_vault, _want);
 
         MettalexVault mVault = MettalexVault(mettalex_vault);
-        uint coinPerUnit = mVault.COLLATERAL_PER_UNIT();
-        uint feePerUnit = mVault.COLLATERAL_TOKEN_FEE_PER_UNIT();
+        uint coinPerUnit = mVault.collateralPerUnit();
+        uint feePerUnit = mVault.collateralTokenFeePerUnit();
         uint totalPerUnit = coinPerUnit.add(feePerUnit);
         uint qtyToMint = _want.div(totalPerUnit);
 
         uint _before = _balance;
-        mVault.mintPositions(1); // qtyToMint);
+        mVault.mintPositions(1000000); // qtyToMint);
 
         // Then supply minted tokens and remaining collateral to Balancer pool
 

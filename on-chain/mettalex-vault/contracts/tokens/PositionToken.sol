@@ -1,5 +1,8 @@
 pragma solidity ^0.5.2;
 
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/ownership/Ownable.sol";
+
 contract ERC20Basic {
     uint256 public totalSupply = 0;
 
@@ -10,34 +13,34 @@ contract ERC20Basic {
     event Transfer(address indexed from, address indexed to, uint256 value);
 }
 
-library SafeMath {
-    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-        if (a == 0) {
-            return 0;
-        }
-        uint256 c = a * b;
-        assert(c / a == b);
-        return c;
-    }
-
-    function div(uint256 a, uint256 b) internal pure returns (uint256) {
-        // assert(b > 0); // Solidity automatically throws when dividing by 0
-        uint256 c = a / b;
-        // assert(a == b * c + a % b); // There is no case in which this doesn't hold
-        return c;
-    }
-
-    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
-        assert(b <= a);
-        return a - b;
-    }
-
-    function add(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 c = a + b;
-        assert(c >= a);
-        return c;
-    }
-}
+//library SafeMath {
+//    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+//        if (a == 0) {
+//            return 0;
+//        }
+//        uint256 c = a * b;
+//        assert(c / a == b);
+//        return c;
+//    }
+//
+//    function div(uint256 a, uint256 b) internal pure returns (uint256) {
+//        // assert(b > 0); // Solidity automatically throws when dividing by 0
+//        uint256 c = a / b;
+//        // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+//        return c;
+//    }
+//
+//    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+//        assert(b <= a);
+//        return a - b;
+//    }
+//
+//    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+//        uint256 c = a + b;
+//        assert(c >= a);
+//        return c;
+//    }
+//}
 
 /**
  * @title Basic token
@@ -209,54 +212,54 @@ contract StandardToken is ERC20, BasicToken {
     }
 }
 
-/**
- * @title Ownable
- * @dev The Ownable contract has an owner address, and provides basic authorization control
- * functions, this simplifies the implementation of "user permissions".
- */
-contract Ownable {
-    address public owner;
-
-    event OwnershipRenounced(address indexed previousOwner);
-    event OwnershipTransferred(
-        address indexed previousOwner,
-        address indexed newOwner
-    );
-
-    /**
-     * @dev The Ownable constructor sets the original `owner` of the contract to the sender
-     * account.
-     */
-    constructor() public {
-        owner = msg.sender;
-    }
-
-    /**
-     * @dev Throws if called by any account other than the owner.
-     */
-    modifier onlyOwner() {
-        require(msg.sender == owner, "OWNER_ONLY");
-        _;
-    }
-
-    /**
-     * @dev Allows the current owner to transfer control of the contract to a newOwner.
-     * @param newOwner The address to transfer ownership to.
-     */
-    function transferOwnership(address newOwner) public onlyOwner {
-        require(newOwner != address(0), "Invalid address");
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-    }
-
-    /**
-     * @dev Allows the current owner to relinquish control of the contract.
-     */
-    function renounceOwnership() public onlyOwner {
-        emit OwnershipRenounced(owner);
-        owner = address(0);
-    }
-}
+///**
+// * @title Ownable
+// * @dev The Ownable contract has an owner address, and provides basic authorization control
+// * functions, this simplifies the implementation of "user permissions".
+// */
+//contract Ownable {
+//    address public owner;
+//
+//    event OwnershipRenounced(address indexed previousOwner);
+//    event OwnershipTransferred(
+//        address indexed previousOwner,
+//        address indexed newOwner
+//    );
+//
+//    /**
+//     * @dev The Ownable constructor sets the original `owner` of the contract to the sender
+//     * account.
+//     */
+//    constructor() public {
+//        owner = msg.sender;
+//    }
+//
+//    /**
+//     * @dev Throws if called by any account other than the owner.
+//     */
+//    modifier onlyOwner() {
+//        require(msg.sender == owner, "OWNER_ONLY");
+//        _;
+//    }
+//
+//    /**
+//     * @dev Allows the current owner to transfer control of the contract to a newOwner.
+//     * @param newOwner The address to transfer ownership to.
+//     */
+//    function transferOwnership(address newOwner) public onlyOwner {
+//        require(newOwner != address(0), "Invalid address");
+//        emit OwnershipTransferred(owner, newOwner);
+//        owner = newOwner;
+//    }
+//
+//    /**
+//     * @dev Allows the current owner to relinquish control of the contract.
+//     */
+//    function renounceOwnership() public onlyOwner {
+//        emit OwnershipRenounced(owner);
+//        owner = address(0);
+//    }
+//}
 
 /**
  * @title PositionToken
@@ -267,7 +270,7 @@ contract PositionToken is StandardToken, Ownable {
     uint8 public decimals = 18;
     bool public paused = false;
     bool public settled = false;
-    uint8 public version;
+    uint256 public version;
 
     mapping(address => bool) public whitelist;
 
@@ -286,7 +289,7 @@ contract PositionToken is StandardToken, Ownable {
         string memory _name,
         string memory _symbol,
         uint8 _decimals,
-        uint8 _version
+        uint256 _version
     ) public {
         name = _name;
         symbol = _symbol;
