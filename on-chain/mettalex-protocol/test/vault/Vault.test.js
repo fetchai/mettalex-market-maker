@@ -96,7 +96,7 @@ describe('Vault', () => {
     });
 
     it('should check collateral token fee per unit', async () => {
-      expect((await this.vault.collateralTokenFeePerUnit()).toNumber()).to.equal(75000);
+      expect((await this.vault.collateralFeePerUnit()).toNumber()).to.equal(75000);
     });
 
     it('should check settlement price', async () => {
@@ -119,15 +119,15 @@ describe('Vault', () => {
       expect((await this.vault.automatedMarketMaker()).toString()).to.equal(amm);
     });
 
-    it('should check collateral token addresss', async () => {
+    it('should check collateral token address', async () => {
       expect((await this.vault.collateralToken()).toString()).to.equal(this.ctk.address);
     });
 
-    it('should check long token addresss', async () => {
+    it('should check long token address', async () => {
       expect((await this.vault.longPositionToken()).toString()).to.equal(this.long.address);
     });
 
-    it('should check short token addresss', async () => {
+    it('should check short token address', async () => {
       expect((await this.vault.shortPositionToken()).toString()).to.equal(this.short.address);
     });
 
@@ -136,7 +136,7 @@ describe('Vault', () => {
     });
   });
 
-  describe('Mint position tokens', () => {
+  describe('Mint position tokens with quantity to mint', () => {
     const tokenAmount = 6000;
     const requiredCTK = new BN('60450000000');
 
@@ -200,6 +200,73 @@ describe('Vault', () => {
     it('should reject mint if contract is settled', async () => {
       await this.vault.updateSpot(3000001, { from: oracle });
       await expectRevert(this.vault.mintPositions(tokenAmount, { from: user }), 'revert');
+    });
+  });
+
+  describe('Mint position tokens with collateral amount', () => {
+    const tokenAmount = 6000;
+    const requiredCTK = new BN('60450000000');
+
+    beforeEach(async () => {
+      await _beforeTx(user, requiredCTK);
+    });
+
+    afterEach(async () => {
+      await _afterTx(user);
+    });
+
+    it('should reject mint from user if contract is not whitelisted in long position token', async () => {
+      await this.long.setWhitelist(this.vault.address, false, { from: owner });
+      await expectRevert(this.vault.mintFromCollateralAmount(requiredCTK, { from: other }), 'revert');
+    });
+
+    it('should reject mint from user if contract is not whitelisted in short position token', async () => {
+      await this.short.setWhitelist(this.vault.address, false, { from: owner });
+      await expectRevert(this.vault.mintFromCollateralAmount(requiredCTK, { from: other }), 'revert');
+    });
+
+    it('should revert if collateral cannot be transferred due to insufficient collateral funds in user account', async () => {
+      const balanceCTK = await this.ctk.balanceOf(user);
+      await expectRevert(this.vault.mintFromCollateralAmount(balanceCTK + 1, { from: user }), 'revert');
+    });
+
+    it('should revert if collateral cannot be transferred due to lack of approval to transfer collateral from user', async () => {
+      await this.ctk.approve(this.vault.address, 0, { from: user });
+      await expectRevert(this.vault.mintFromCollateralAmount(requiredCTK, { from: user }), 'revert');
+    });
+
+    it('should mint 6 long & 6 short position tokens', async () => {
+      const receipt = await this.vault.mintFromCollateralAmount(requiredCTK, { from: user });
+      expect((await this.long.balanceOf(user)).toNumber()).to.equal(tokenAmount);
+      expect((await this.short.balanceOf(user)).toNumber()).to.equal(tokenAmount);
+      expect((await this.vault.feeAccumulated()).toNumber()).to.equal(450000000);
+
+      expectEvent(receipt, 'PositionsMinted', {
+        _to: user,
+        _value: new BN(tokenAmount),
+        _collateralRequired: new BN('60000000000'),
+        _collateralFee: new BN('450000000'),
+      });
+    });
+
+    it('should charge 0 fee from automated market maker', async () => {
+      await _beforeTx(amm, requiredCTK);
+      const receipt = await this.vault.mintFromCollateralAmount(60000000000, { from: amm });
+      expect((await this.long.balanceOf(amm)).toNumber()).to.equal(tokenAmount);
+      expect((await this.short.balanceOf(amm)).toNumber()).to.equal(tokenAmount);
+      expect((await this.vault.feeAccumulated()).toNumber()).to.equal(0);
+
+      expectEvent(receipt, 'PositionsMinted', {
+        _to: amm,
+        _value: new BN(tokenAmount),
+        _collateralRequired: new BN('60000000000'),
+        _collateralFee: new BN('0'),
+      });
+    });
+
+    it('should reject mint if contract is settled', async () => {
+      await this.vault.updateSpot(3000001, { from: oracle });
+      await expectRevert(this.vault.mintFromCollateralAmount(tokenAmount, { from: user }), 'revert');
     });
   });
 
@@ -416,8 +483,8 @@ describe('Vault', () => {
   describe('Bulk settle positions', () => {
     const tokenAmount = new BN('6000');
     const requiredCTK = new BN('60450000000');
-    const accounts150 = Array.from(Array(150), (_, i) => user);
-    const accounts151 = Array.from(Array(151), (_, i) => user);
+    const accounts120 = Array.from(Array(120), (_, i) => user);
+    const accounts121 = Array.from(Array(121), (_, i) => user);
 
     const collateralReturned = new BN('60000000000');
     const breachedSpot = 3000001;
@@ -452,7 +519,7 @@ describe('Vault', () => {
     it('should reject if call exceeds max allowed length', async () => {
       await this.vault.updateSpot(breachedSpot, { from: oracle });
       await expectRevert(
-        this.vault.bulkSettlePositions(accounts151, { from: owner }),
+        this.vault.bulkSettlePositions(accounts121, { from: owner }),
         ' Cannot update more than 150 accounts'
       );
     });
@@ -460,11 +527,11 @@ describe('Vault', () => {
     it('should settle for multiple addresses within max length', async () => {
       await this.vault.updateSpot(breachedSpot, { from: oracle });
       const initialCTK = await this.ctk.balanceOf(this.vault.address);
-      const receipt = await this.vault.bulkSettlePositions(accounts150, { from: owner });
+      const receipt = await this.vault.bulkSettlePositions(accounts120, { from: owner });
 
       expectEvent(receipt, 'PositionSettledInBulk', {
-        _settlers: accounts150,
-        _length: new BN(accounts150.length),
+        _settlers: accounts120,
+        _length: new BN(accounts120.length),
         _totalLongBurned: tokenAmount,
         _totalShortBurned: tokenAmount,
         _totalCollateralReturned: collateralReturned,

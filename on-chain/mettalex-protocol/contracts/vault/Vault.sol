@@ -15,9 +15,10 @@ contract Vault is Ownable {
     uint256 public priceFloor;
     uint256 public qtyMultiplier; // multiplier corresponding to the value of 1 increment in price to token base units
     uint256 public collateralPerUnit; // required collateral amount for the full range of outcome tokens
-    uint256 public collateralTokenFeePerUnit;
+    uint256 public collateralFeePerUnit;
+    uint256 private collateralWithFeePerUnit;
 
-    uint8 private constant MAX_SETTLEMENT_LENGTH = 150;
+    uint8 private constant MAX_SETTLEMENT_LENGTH = 120;
     uint256 public settlementPrice;
     uint256 public settlementTimeStamp;
     bool public isSettled = false;
@@ -89,11 +90,12 @@ contract Vault is Ownable {
         priceFloor = _floor;
         qtyMultiplier = _multiplier;
         collateralPerUnit = _cap.sub(_floor).mul(_multiplier);
-        collateralTokenFeePerUnit = _cap
+        collateralFeePerUnit = _cap
             .add(_floor)
             .mul(_multiplier)
             .mul(_feeRate)
             .div(200000);
+        collateralWithFeePerUnit = collateralPerUnit.add(collateralFeePerUnit);
     }
 
     modifier onlyOracle {
@@ -122,16 +124,16 @@ contract Vault is Ownable {
     function _calculateFee(uint256 _quantityToMint) internal returns (uint256) {
         if (msg.sender == automatedMarketMaker) return 0;
 
-        uint256 _collateralFee = collateralTokenFeePerUnit.mul(_quantityToMint);
-        feeAccumulated = feeAccumulated.add(_collateralFee);
-        return _collateralFee;
+        uint256 collateralFee = collateralFeePerUnit.mul(_quantityToMint);
+        feeAccumulated = feeAccumulated.add(collateralFee);
+        return collateralFee;
     }
 
     function mintPositions(uint256 _quantityToMint) external notSettled {
-        IToken collateral = IToken(collateralToken);
         uint256 collateralRequired = collateralPerUnit.mul(_quantityToMint);
         uint256 collateralFee = _calculateFee(_quantityToMint);
 
+        IToken collateral = IToken(collateralToken);
         collateral.transferFrom(
             msg.sender,
             address(this),
@@ -147,6 +149,47 @@ contract Vault is Ownable {
             msg.sender,
             _quantityToMint,
             collateralRequired,
+            collateralFee
+        );
+    }
+
+    function _calculateFeeAndPositions(uint256 _collateralAmount)
+        internal
+        returns (uint256, uint256)
+    {
+        if (msg.sender == automatedMarketMaker) {
+            uint256 quantityToMint = _collateralAmount.div(collateralPerUnit);
+            return (0, quantityToMint);
+        }
+        uint256 quantityToMint = _collateralAmount.div(
+            collateralWithFeePerUnit
+        );
+        uint256 collateralFee = collateralFeePerUnit.mul(quantityToMint);
+        feeAccumulated = feeAccumulated.add(collateralFee);
+        return (collateralFee, quantityToMint);
+    }
+
+    function mintFromCollateralAmount(uint256 _collateralAmount)
+        external
+        notSettled
+    {
+        (
+            uint256 collateralFee,
+            uint256 quantityToMint
+        ) = _calculateFeeAndPositions(_collateralAmount);
+
+        IToken collateral = IToken(collateralToken);
+        collateral.transferFrom(msg.sender, address(this), _collateralAmount);
+
+        IToken long = IToken(longPositionToken);
+        IToken short = IToken(shortPositionToken);
+
+        long.mint(msg.sender, quantityToMint);
+        short.mint(msg.sender, quantityToMint);
+        emit PositionsMinted(
+            msg.sender,
+            quantityToMint,
+            _collateralAmount.sub(collateralFee),
             collateralFee
         );
     }
