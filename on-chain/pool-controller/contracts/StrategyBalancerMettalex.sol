@@ -164,7 +164,7 @@ interface Balancer {
 
 interface MettalexVault {
     function collateralPerUnit() external view returns (uint _collateralPerUnit);
-    function collateralTokenFeePerUnit() external view returns (uint _collateralFeePerUnit);
+    function collateralFeePerUnit() external view returns (uint _collateralFeePerUnit);
     function mintPositions(uint qtyToMint) external;
 }
 
@@ -248,7 +248,7 @@ contract StrategyBalancerMettalex {
 
         MettalexVault mVault = MettalexVault(mettalex_vault);
         uint coinPerUnit = mVault.collateralPerUnit();
-        uint feePerUnit = mVault.collateralTokenFeePerUnit();
+        uint feePerUnit = mVault.collateralFeePerUnit();
         uint totalPerUnit = coinPerUnit.add(feePerUnit);
         uint qtyToMint = _want.div(totalPerUnit);
 

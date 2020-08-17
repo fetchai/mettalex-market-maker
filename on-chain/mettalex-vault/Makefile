@@ -1,4 +1,4 @@
-build: contracts/vault/Vault.sol contracts/tokens/PositionToken.sol contracts/tokens/CoinToken.sol
+build: contracts
 	npx oz compile
 
 # Coin token in this project - should be able to use mettalex-coin but running into integration issues
@@ -34,11 +34,8 @@ balanceOf_pool_controller:
 	npx oz call -n development --to 0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B --method balanceOf --args 0x9b1f7F645351AF3631a656421eD2e40f2802E6c0
 	npx oz call -n development --to 0xC89Ce4735882C9F0f0FE26686c53074E09B0D550 --method balanceOf --args 0x9b1f7F645351AF3631a656421eD2e40f2802E6c0
 
-contracts/Vault.sol:
-	cp ../../../mettalex-protocol/contracts/Vault.sol contracts
-
-contracts/PositionTokenV2.sol:
-	cp ../../../mettalex-protocol/contracts/PositionTokenV2.sol contracts
+contracts:
+	cp -R ../../../mettalex-protocol/contracts/ contracts
 
 
 init:
