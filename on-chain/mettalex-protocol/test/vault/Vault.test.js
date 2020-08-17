@@ -416,8 +416,8 @@ describe('Vault', () => {
   describe('Bulk settle positions', () => {
     const tokenAmount = new BN('6000');
     const requiredCTK = new BN('60450000000');
-    const accounts150 = Array.from(Array(150), (_, i) => user);
-    const accounts151 = Array.from(Array(151), (_, i) => user);
+    const accounts120 = Array.from(Array(120), (_, i) => user);
+    const accounts121 = Array.from(Array(121), (_, i) => user);
 
     const collateralReturned = new BN('60000000000');
     const breachedSpot = 3000001;
@@ -452,7 +452,7 @@ describe('Vault', () => {
     it('should reject if call exceeds max allowed length', async () => {
       await this.vault.updateSpot(breachedSpot, { from: oracle });
       await expectRevert(
-        this.vault.bulkSettlePositions(accounts151, { from: owner }),
+        this.vault.bulkSettlePositions(accounts121, { from: owner }),
         ' Cannot update more than 150 accounts'
       );
     });
@@ -460,11 +460,11 @@ describe('Vault', () => {
     it('should settle for multiple addresses within max length', async () => {
       await this.vault.updateSpot(breachedSpot, { from: oracle });
       const initialCTK = await this.ctk.balanceOf(this.vault.address);
-      const receipt = await this.vault.bulkSettlePositions(accounts150, { from: owner });
+      const receipt = await this.vault.bulkSettlePositions(accounts120, { from: owner });
 
       expectEvent(receipt, 'PositionSettledInBulk', {
-        _settlers: accounts150,
-        _length: new BN(accounts150.length),
+        _settlers: accounts120,
+        _length: new BN(accounts120.length),
         _totalLongBurned: tokenAmount,
         _totalShortBurned: tokenAmount,
         _totalCollateralReturned: collateralReturned,

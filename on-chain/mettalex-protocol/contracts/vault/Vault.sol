@@ -17,7 +17,7 @@ contract Vault is Ownable {
     uint256 public collateralPerUnit; // required collateral amount for the full range of outcome tokens
     uint256 public collateralTokenFeePerUnit;
 
-    uint8 private constant MAX_SETTLEMENT_LENGTH = 150;
+    uint8 private constant MAX_SETTLEMENT_LENGTH = 120;
     uint256 public settlementPrice;
     uint256 public settlementTimeStamp;
     bool public isSettled = false;
