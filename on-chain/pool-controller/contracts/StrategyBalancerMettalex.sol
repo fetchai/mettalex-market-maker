@@ -165,8 +165,11 @@ interface Balancer {
 interface MettalexVault {
     function collateralPerUnit() external view returns (uint _collateralPerUnit);
     function collateralFeePerUnit() external view returns (uint _collateralFeePerUnit);
+    function priceFloor() external view returns (uint _priceFloor);
+    function priceCap() external view returns (uint _priceCap);
     function mintPositions(uint qtyToMint) external;
     function redeemPositions(uint qtyToRedeem) external;
+    function mintFromCollateralAmount(uint256 _collateralAmount) external;
 }
 
 /*
@@ -259,6 +262,61 @@ contract StrategyBalancerMettalex {
         }
     }
 
+    struct PriceInfo {
+        uint floor;
+        uint spot;
+        uint cap;
+        uint range;
+        uint C;
+        uint d_c;
+        uint d_l;
+        uint d_s;
+        uint d;
+    }
+
+
+    function calcDenormWeights(uint[3] memory bal, uint spot)
+        internal
+        returns (uint[3] memory wt)
+    {
+        //  Number of collateral tokens per pair of long and short tokens
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        PriceInfo memory price;
+
+        price.spot = spot;
+        price.floor = mVault.priceFloor();
+        price.cap = mVault.priceCap();
+        price.range = price.cap.sub(price.floor);
+
+        //   v = (price - floor)/priceRange
+        // 1-v = (cap - price)/priceRange
+        price.C = mVault.collateralPerUnit();
+
+        // d =  x_c + C*v*x_l + C*x_s*(1 - v)
+        // Try to 'avoid CompilerError: Stack too deep, try removing local variables.'
+        // by using single variable to store [x_c, x_l, x_s]
+        price.d_c = bal[0];
+        price.d_l = price.C.mul(price.spot.sub(price.floor)).mul(bal[1]).div(price.range);
+        price.d_s = price.C.mul(price.cap.sub(price.spot)).mul(bal[2]).div(price.range);
+        price.d = price.d_c.add(price.d_l).add(price.d_s);
+
+        //        new_wts = [
+        //            x_c/d,
+        //            v*C*x_l/d,
+        //            (1-v)*C*x_s/d
+        //        ]
+        //        new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
+
+        wt[0] = price.d_c.mul(100 ether).div(2).div(price.d);
+        wt[1] = price.d_l.mul(100 ether).div(2).div(price.d);
+        wt[2] = price.d_s.mul(100 ether).div(2).div(price.d);
+
+//        wt[1] = bal[1].mul(100 ether).mul(price.d_l).mul(price.spot.sub(price.floor)).div(price.range).div(d).div(2);
+//        wt[2] = bal[2].mul(100 ether).mul(C).mul(price.cap.sub(price.spot)).div(price.range).div(d).div(2);
+        return wt;
+    }
+
+
     function deposit() external {
         require(breaker == false, "!breaker");
         Balancer bPool = Balancer(balancer);
@@ -276,13 +334,8 @@ contract StrategyBalancerMettalex {
         IERC20(want).safeApprove(mettalex_vault, 0);
         IERC20(want).safeApprove(mettalex_vault, _want);
 
-        uint coinPerUnit = mVault.collateralPerUnit();
-        uint feePerUnit = mVault.collateralFeePerUnit();
-        uint totalPerUnit = coinPerUnit.add(feePerUnit);
-        uint qtyToMint = _want.div(totalPerUnit);
-
         uint _before = _balance;
-        mVault.mintPositions(qtyToMint);
+        mVault.mintFromCollateralAmount(_want);
 
         uint coin_qty = IERC20(want).balanceOf(address(this));
         uint ltk_qty = IERC20(long_token).balanceOf(address(this));
@@ -297,10 +350,20 @@ contract StrategyBalancerMettalex {
         IERC20(short_token).safeApprove(balancer, stk_qty);
 
         // Then supply minted tokens and remaining collateral to Balancer pool
-        bPool.bind(want, coin_qty, 25000000000000000000);
-        bPool.bind(long_token, ltk_qty, 12500000000000000000);
-        bPool.bind(short_token, stk_qty, 12500000000000000000);
+        uint price_pct = 50;
+        uint price = mVault.priceFloor().add(mVault.priceCap().sub(mVault.priceFloor()).mul(price_pct).div(100));
+        uint wt_c;
+        uint wt_l;
+        uint wt_s;
+        uint[3] memory bal;
+        bal[0] = coin_qty;
+        bal[1] = ltk_qty;
+        bal[2] = stk_qty;
+        uint[3] memory wt = calcDenormWeights(bal, price);
 
+        bPool.bind(want, coin_qty, wt[0]);  // 25000000000000000000);
+        bPool.bind(long_token, ltk_qty, wt[1]);  // 12500000000000000000);
+        bPool.bind(short_token, stk_qty, wt[2]);  // 12500000000000000000);
 
 //        uint _after = IERC20(want).balanceOf(address(this));
 //        supply = supply.add(_before.sub(_after));

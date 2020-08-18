@@ -171,6 +171,18 @@ def set_strategy(w3, y_controller, tok, strategy):
     print(f'{tok_name} strategy changed from {old_strategy} to {new_strategy}')
 
 
+def set_autonomous_market_maker(w3, vault, strategy):
+    acct = w3.eth.defaultAccount
+    old_amm = vault.functions.automatedMarketMaker().call()
+    tx_hash = vault.functions.updateAutomatedMarketMaker(strategy.address).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    new_amm = vault.functions.automatedMarketMaker().call()
+    vault_name = vault.functions.contractName().call()
+    print(f'{vault_name} strategy changed from {old_amm} to {new_amm}')
+
+
 def connect_balancer(w3):
     build_file = Path(__file__).parent / 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
     with open(build_file, 'r') as f:
@@ -210,6 +222,7 @@ def full_setup():
     whitelist_vault(w3, vault, ltk, stk)
     set_strategy(w3, y_controller, coin, strategy)
     set_balancer_controller(w3, balancer, strategy)
+    set_autonomous_market_maker(w3, vault, strategy)  # Zero fees for AMM
     return w3, admin, balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
 
 
@@ -229,7 +242,7 @@ def deposit(w3, y_vault, coin, amount):
 def earn(w3, y_vault):
     acct = w3.eth.defaultAccount
     tx_hash = y_vault.functions.earn().transact(
-        {'from': acct, 'gas': 1_000_000}
+        {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 

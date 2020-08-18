@@ -448,6 +448,22 @@ def swap_amount_in(w3, pool, tok_in, qty_in, tok_out, min_qty_out=None, max_pric
 
 
 if __name__ == '__main__':
+    """Example usage from console
+    %load_ext autoreload
+    %autoreload 2
+    import os
+    import sys
+    os.chdir('price-leveraged-token/market-maker')
+    sys.path.append(os.getcwd())
+    from setup_testnet_pool import connect, print_balance, deploy_pool, bind_pool, bind_token, approve_pool, get_pool_balance, unbind_pool, set_fee, get_spot_price, swap_amount_in, set_public_swap, calc_out_given_in, rebalance_pool, get_public_swap
+    w3, contracts = connect()
+    get_pool_balance(w3, contracts)
+    get_spot_price(w3, pool, ctok, stok, unitless=True, include_fee=False) 
+    get_spot_price(w3, pool, ctok, stok, unitless=False, include_fee=False) 
+    get_spot_price(w3, pool, ctok, ltok, unitless=False, include_fee=False) 
+    rebalance_weights(w3, contracts, 0.4)  # Price is in fraction of cap - floor 
+    """
+
     # Setup connections and variables in environment
     w3, contracts = connect()
     pool = contracts['SS_BPOOL']
