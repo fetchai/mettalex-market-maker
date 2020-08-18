@@ -166,6 +166,7 @@ interface MettalexVault {
     function collateralPerUnit() external view returns (uint _collateralPerUnit);
     function collateralFeePerUnit() external view returns (uint _collateralFeePerUnit);
     function priceFloor() external view returns (uint _priceFloor);
+    function priceSpot() external view returns (uint _priceSpot);
     function priceCap() external view returns (uint _priceCap);
     function mintPositions(uint qtyToMint) external;
     function redeemPositions(uint qtyToRedeem) external;
@@ -262,6 +263,8 @@ contract StrategyBalancerMettalex {
         }
     }
 
+    // Struct containing variables needed for denormalized weight calculation
+    // to avoid stack error
     struct PriceInfo {
         uint floor;
         uint spot;
@@ -274,8 +277,7 @@ contract StrategyBalancerMettalex {
         uint d;
     }
 
-
-    function calcDenormWeights(uint[3] memory bal, uint spot)
+    function calcDenormWeights(uint[3] memory bal)
         internal
         returns (uint[3] memory wt)
     {
@@ -283,7 +285,7 @@ contract StrategyBalancerMettalex {
         MettalexVault mVault = MettalexVault(mettalex_vault);
         PriceInfo memory price;
 
-        price.spot = spot;
+        price.spot = mVault.priceSpot();
         price.floor = mVault.priceFloor();
         price.cap = mVault.priceCap();
         price.range = price.cap.sub(price.floor);
@@ -350,16 +352,13 @@ contract StrategyBalancerMettalex {
         IERC20(short_token).safeApprove(balancer, stk_qty);
 
         // Then supply minted tokens and remaining collateral to Balancer pool
-        uint price_pct = 50;
-        uint price = mVault.priceFloor().add(mVault.priceCap().sub(mVault.priceFloor()).mul(price_pct).div(100));
-        uint wt_c;
-        uint wt_l;
-        uint wt_s;
+//        uint price_pct = 50;
+//        uint spot = mVault.priceFloor().add(mVault.priceCap().sub(mVault.priceFloor()).mul(price_pct).div(100));
         uint[3] memory bal;
         bal[0] = coin_qty;
         bal[1] = ltk_qty;
         bal[2] = stk_qty;
-        uint[3] memory wt = calcDenormWeights(bal, price);
+        uint[3] memory wt = calcDenormWeights(bal);
 
         bPool.bind(want, coin_qty, wt[0]);  // 25000000000000000000);
         bPool.bind(long_token, ltk_qty, wt[1]);  // 12500000000000000000);

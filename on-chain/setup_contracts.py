@@ -215,6 +215,18 @@ def set_balancer_controller(w3, balancer, strategy, controller_address=None):
     print(f'Balancer controller {balancer_controller}')
 
 
+def set_price(w3, vault, price):
+    acct = w3.eth.defaultAccount
+    old_spot = vault.functions.priceSpot().call()
+    tx_hash = vault.functions.updateSpot(price).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    new_spot = vault.functions.priceSpot().call()
+    vault_name = vault.functions.contractName().call()
+    print(f'{vault_name} spot changed from {old_spot} to {new_spot}')
+
+
 def full_setup():
     w3, admin = connect()
     contracts = get_contracts(w3)
@@ -223,7 +235,41 @@ def full_setup():
     set_strategy(w3, y_controller, coin, strategy)
     set_balancer_controller(w3, balancer, strategy)
     set_autonomous_market_maker(w3, vault, strategy)  # Zero fees for AMM
+    set_price(w3, vault, 2500000)
     return w3, admin, balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
+
+
+def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=False):
+    """Get spot price for tok_out in terms of number of tok_in required to purchase
+    NB: copied from setup_testnet_pool
+
+    :param w3: Web3 connection
+    :param balancer: Web3 contract for pool
+    :param tok_in: Web3 contract for input token e.g. ltok to sell Long position to pool
+    :param tok_out: Web3 contract for output token e.g. ctok to receive Collateral token
+    :param unitless: default True, if False amount is scaled by token decimals
+    :param include_fee: default True, if False ignore swap fees
+    :return: number of input tokens required for each output token
+        e.g. if price is $50 per long token then
+            spot price  ctok -> ltok = 50 ($50 required for 1 LTK)
+                        ltok -> ctok = 0.02 (0.02 LTK (20kg) required for $1)
+    """
+    # Spot price is number of tok_in required for 1 tok_out (unitless)
+    if include_fee:
+        spot_price = balancer.functions.getSpotPrice(
+            tok_in.address, tok_out.address
+        ).call()
+    else:
+        spot_price = balancer.functions.getSpotPriceSansFee(
+            tok_in.address, tok_out.address
+        ).call()
+    if not unitless:
+        # Take decimals into account
+        spot_price = spot_price * 10**(
+                tok_out.functions.decimals().call()
+                - tok_in.functions.decimals().call()
+                - 18)
+    return spot_price
 
 
 def deposit(w3, y_vault, coin, amount):
