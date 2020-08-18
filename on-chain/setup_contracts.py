@@ -1,4 +1,5 @@
 import os
+import subprocess
 from pathlib import Path
 import json
 
@@ -88,6 +89,37 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
     return balancer
 
 
+def deploy_upgradeable_strategy(w3, y_controller):
+    contract_dir = Path(__file__).parent / 'pool-controller'
+    current_dir = os.getcwd()
+    os.chdir(contract_dir)
+    acct = w3.eth.defaultAccount
+    result = subprocess.run(
+        ['npx', 'oz', 'deploy', '-n', 'development', '-k', 'upgradeable', '-f', acct,
+         'StrategyBalancerMettalex',  y_controller.address],
+        capture_output=True
+    )
+    strategy_address = result.stdout.strip().decode('utf-8')
+    os.chdir(current_dir)
+    strategy = connect_strategy(w3, strategy_address)
+    return strategy
+
+
+def upgrade_strategy(w3, strategy, y_controller):
+    contract_dir = Path(__file__).parent / 'pool-controller'
+    current_dir = os.getcwd()
+    os.chdir(contract_dir)
+    acct = w3.eth.defaultAccount
+    result = subprocess.run(
+        ['npx', 'oz', 'upgrade', '-n', 'development', '--init', 'initialize',
+         '--args', y_controller.address, 'StrategyBalancerMettalex'],
+        capture_output=True
+    )
+    os.chdir(current_dir)
+    strategy = connect_strategy(w3, strategy.address)
+    return strategy
+
+
 def deploy(w3, contracts):
     acct = w3.eth.defaultAccount
     balancer_factory = deploy_contract(w3, contracts['BFactory'])
@@ -103,8 +135,39 @@ def deploy(w3, contracts):
     )
     y_controller = deploy_contract(w3, contracts['YController'], acct)
     y_vault = deploy_contract(w3, contracts['YVault'], coin.address, y_controller.address)
+    # Use OpenZeppelin CLI to deploy upgradeable contract for ease of development
+    strategy = deploy_upgradeable_strategy(w3, y_controller)
 
-    return balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault
+    return balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
+
+
+def set_token_whitelist(w3, tok, address, state=True):
+    acct = w3.eth.defaultAccount
+    old_state = tok.functions.whitelist(address).call()
+    tx_hash = tok.functions.setWhitelist(address, state).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    new_state = tok.functions.whitelist(address).call()
+    tok_name = tok.functions.name().call()
+    print(f'{tok_name} whitelist state for {address} changed from {old_state} to {new_state}')
+
+
+def whitelist_vault(w3, vault, ltk, stk):
+    set_token_whitelist(w3, ltk, vault.address, True)
+    set_token_whitelist(w3, stk, vault.address, True)
+
+
+def set_strategy(w3, y_controller, tok, strategy):
+    acct = w3.eth.defaultAccount
+    old_strategy = y_controller.functions.strategies(tok.address).call()
+    tx_hash = y_controller.functions.setStrategy(tok.address, strategy.address).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    new_strategy = y_controller.functions.strategies(tok.address).call()
+    tok_name = tok.functions.name().call()
+    print(f'{tok_name} strategy changed from {old_strategy} to {new_strategy}')
 
 
 def connect_balancer(w3):
@@ -118,11 +181,77 @@ def connect_balancer(w3):
     return balancer
 
 
-if __name__ == '__main__':
-    w3, admin = connect()
-    balancer = connect_balancer(w3)
-    controller_address = '0x9b1f7F645351AF3631a656421eD2e40f2802E6c0'
-    tx_hash = balancer.functions.setController(controller_address).transact({'from': admin.address, 'gas': 1_000_000})
+def connect_strategy(w3, address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0'):
+    build_file = Path(__file__).parent / 'pool-controller' / 'build' / 'contracts' / 'StrategyBalancerMettalex.json'
+    with open(build_file, 'r') as f:
+        contract_details = json.load(f)
+
+    # get abi
+    abi = contract_details['abi']
+    strategy = w3.eth.contract(abi=abi, address=address)
+    return strategy
+
+
+def set_balancer_controller(w3, balancer, strategy, controller_address=None):
+    acct = w3.eth.defaultAccount
+    if controller_address is None:
+        controller_address = strategy.address
+    tx_hash = balancer.functions.setController(controller_address).transact({'from':acct, 'gas': 1_000_000})
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     balancer_controller = balancer.functions.getController().call()
     print(f'Balancer controller {balancer_controller}')
+
+
+def full_setup():
+    w3, admin = connect()
+    contracts = get_contracts(w3)
+    balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy = deploy(w3, contracts)
+    whitelist_vault(w3, vault, ltk, stk)
+    set_strategy(w3, y_controller, coin, strategy)
+    set_balancer_controller(w3, balancer, strategy)
+    return w3, admin, balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
+
+
+def deposit(w3, y_vault, coin, amount):
+    acct = w3.eth.defaultAccount
+    amount_unitless = int(amount * 10**(coin.functions.decimals().call()))
+    tx_hash = coin.functions.approve(y_vault.address, amount_unitless).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    tx_hash = y_vault.functions.deposit(amount_unitless).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+
+def earn(w3, y_vault):
+    acct = w3.eth.defaultAccount
+    tx_hash = y_vault.functions.earn().transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+
+class BalanceReporter(object):
+    def __init__(self, w3, coin, ltk, stk):
+        self.w3 = w3
+        self.coin = coin
+        self.ltk = ltk
+        self.stk = stk
+
+    def get_balances(self, address):
+        coin_balance = self.coin.functions.balanceOf(address).call()
+        ltk_balance = self.ltk.functions.balanceOf(address).call()
+        stk_balance = self.stk.functions.balanceOf(address).call()
+        return coin_balance, ltk_balance, stk_balance
+
+    def print_balances(self, address, name):
+        coin_balance, ltk_balance, stk_balance = self.get_balances(address)
+        print(f'{name} ({address}) has {coin_balance} coin, {ltk_balance} LTK, {stk_balance} STK')
+
+
+if __name__ == '__main__':
+    w3, admin = connect()
+    balancer = connect_balancer(w3)
+    set_balancer_controller(w3, balancer, controller_address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0')

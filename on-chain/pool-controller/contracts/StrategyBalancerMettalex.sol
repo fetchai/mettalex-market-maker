@@ -239,6 +239,7 @@ contract StrategyBalancerMettalex {
     function deposit() external {
         require(breaker == false, "!breaker");
         // TODO: Unbind tokens from Balancer pool and redeem position tokens against vault
+        // do this now
 
         // Get coin token balance and allocate half to minting position tokens
         uint _balance = IERC20(want).balanceOf(address(this));
