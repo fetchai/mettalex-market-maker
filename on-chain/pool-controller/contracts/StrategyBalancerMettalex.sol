@@ -166,6 +166,7 @@ interface MettalexVault {
     function collateralPerUnit() external view returns (uint _collateralPerUnit);
     function collateralFeePerUnit() external view returns (uint _collateralFeePerUnit);
     function mintPositions(uint qtyToMint) external;
+    function redeemPositions(uint qtyToRedeem) external;
 }
 
 /*
@@ -236,10 +237,38 @@ contract StrategyBalancerMettalex {
         breaker = _breaker;
     }
 
+    function unbind() internal {
+        // Unbind tokens from Balancer pool
+        Balancer bPool = Balancer(balancer);
+        address[] memory tokens = bPool.getCurrentTokens();
+        for (uint i=0; i < tokens.length; i++) {
+            bPool.unbind(tokens[i]);
+        }
+    }
+
+    function redeemPositions() internal {
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        uint ltk_qty = IERC20(long_token).balanceOf(address(this));
+        uint stk_qty = IERC20(short_token).balanceOf(address(this));
+        if (stk_qty < ltk_qty) {
+            if (stk_qty > 0) {
+                mVault.redeemPositions(stk_qty);
+            }
+        } else if (ltk_qty > 0) {
+            mVault.redeemPositions(ltk_qty);
+        }
+    }
+
     function deposit() external {
         require(breaker == false, "!breaker");
-        // TODO: Unbind tokens from Balancer pool and redeem position tokens against vault
-        // do this now
+        Balancer bPool = Balancer(balancer);
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+
+        // Unbind tokens from Balancer pool
+        unbind();
+
+        // Redeem position tokens against Mettalex vault
+        redeemPositions();
 
         // Get coin token balance and allocate half to minting position tokens
         uint _balance = IERC20(want).balanceOf(address(this));
@@ -247,7 +276,6 @@ contract StrategyBalancerMettalex {
         IERC20(want).safeApprove(mettalex_vault, 0);
         IERC20(want).safeApprove(mettalex_vault, _want);
 
-        MettalexVault mVault = MettalexVault(mettalex_vault);
         uint coinPerUnit = mVault.collateralPerUnit();
         uint feePerUnit = mVault.collateralFeePerUnit();
         uint totalPerUnit = coinPerUnit.add(feePerUnit);
@@ -256,19 +284,22 @@ contract StrategyBalancerMettalex {
         uint _before = _balance;
         mVault.mintPositions(qtyToMint);
 
+        uint coin_qty = IERC20(want).balanceOf(address(this));
+        uint ltk_qty = IERC20(long_token).balanceOf(address(this));
+        uint stk_qty = IERC20(short_token).balanceOf(address(this));
+
         // Approve transfer Balancer balancer pool
         IERC20(want).safeApprove(balancer, 0);
-        IERC20(want).safeApprove(balancer, 9571250000000000000000);
+        IERC20(want).safeApprove(balancer, coin_qty);
         IERC20(long_token).safeApprove(balancer, 0);
-        IERC20(long_token).safeApprove(balancer, 95000000);
+        IERC20(long_token).safeApprove(balancer, ltk_qty);
         IERC20(short_token).safeApprove(balancer, 0);
-        IERC20(short_token).safeApprove(balancer, 95000000);
+        IERC20(short_token).safeApprove(balancer, stk_qty);
 
         // Then supply minted tokens and remaining collateral to Balancer pool
-        Balancer bPool = Balancer(balancer);
-        bPool.bind(want, 9571250000000000000000, 25000000000000000000);
-        bPool.bind(long_token, 95000000, 12500000000000000000);
-        bPool.bind(short_token, 95000000, 12500000000000000000);
+        bPool.bind(want, coin_qty, 25000000000000000000);
+        bPool.bind(long_token, ltk_qty, 12500000000000000000);
+        bPool.bind(short_token, stk_qty, 12500000000000000000);
 
 
 //        uint _after = IERC20(want).balanceOf(address(this));

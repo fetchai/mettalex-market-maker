@@ -116,6 +116,7 @@ def upgrade_strategy(w3, strategy, y_controller):
         capture_output=True
     )
     os.chdir(current_dir)
+    print(result.stderr.decode('utf-8'))
     strategy = connect_strategy(w3, strategy.address)
     return strategy
 
@@ -239,6 +240,9 @@ class BalanceReporter(object):
         self.coin = coin
         self.ltk = ltk
         self.stk = stk
+        self.coin_scale = 10**18
+        self.ltk_scale = 10**6
+        self.stk_scale = 10**6
 
     def get_balances(self, address):
         coin_balance = self.coin.functions.balanceOf(address).call()
@@ -248,7 +252,7 @@ class BalanceReporter(object):
 
     def print_balances(self, address, name):
         coin_balance, ltk_balance, stk_balance = self.get_balances(address)
-        print(f'{name} ({address}) has {coin_balance} coin, {ltk_balance} LTK, {stk_balance} STK')
+        print(f'{name} ({address}) has {coin_balance/10**18:0.2f} coin, {ltk_balance/10**6:0.2f} LTK, {stk_balance/10**6:0.2f} STK')
 
 
 if __name__ == '__main__':
