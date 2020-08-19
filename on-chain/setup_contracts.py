@@ -89,14 +89,14 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
     return balancer
 
 
-def deploy_upgradeable_strategy(w3, y_controller):
+def deploy_upgradeable_strategy(w3, y_controller, *args):
     contract_dir = Path(__file__).parent / 'pool-controller'
     current_dir = os.getcwd()
     os.chdir(contract_dir)
     acct = w3.eth.defaultAccount
     result = subprocess.run(
         ['npx', 'oz', 'deploy', '-n', 'development', '-k', 'upgradeable', '-f', acct,
-         'StrategyBalancerMettalex',  y_controller.address],
+         'StrategyBalancerMettalex',  y_controller.address] + [arg.address for arg in args],
         capture_output=True
     )
     strategy_address = result.stdout.strip().decode('utf-8')
@@ -105,14 +105,15 @@ def deploy_upgradeable_strategy(w3, y_controller):
     return strategy
 
 
-def upgrade_strategy(w3, strategy, y_controller):
+def upgrade_strategy(w3, strategy, y_controller, *args):
     contract_dir = Path(__file__).parent / 'pool-controller'
     current_dir = os.getcwd()
     os.chdir(contract_dir)
     acct = w3.eth.defaultAccount
     result = subprocess.run(
         ['npx', 'oz', 'upgrade', '-n', 'development', '--init', 'initialize',
-         '--args', y_controller.address, 'StrategyBalancerMettalex'],
+         'StrategyBalancerMettalex',
+         '--args', y_controller.address] + [arg.address for arg in args],
         capture_output=True
     )
     os.chdir(current_dir)
@@ -137,7 +138,15 @@ def deploy(w3, contracts):
     y_controller = deploy_contract(w3, contracts['YController'], acct)
     y_vault = deploy_contract(w3, contracts['YVault'], coin.address, y_controller.address)
     # Use OpenZeppelin CLI to deploy upgradeable contract for ease of development
-    strategy = deploy_upgradeable_strategy(w3, y_controller)
+    strategy = deploy_upgradeable_strategy(
+        w3,
+        y_controller,
+        coin,
+        balancer,
+        vault,
+        ltk,
+        stk
+    )
 
     return balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
 

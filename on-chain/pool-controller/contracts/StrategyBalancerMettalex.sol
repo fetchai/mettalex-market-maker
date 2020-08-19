@@ -219,6 +219,8 @@ contract StrategyBalancerMettalex {
     bool private initialized;
 
     function initialize(address _controller) public {
+        // Single argument init method for use with ganache-cli --deterministic
+        // and contracts created in a set order
         require(!initialized, "Already initialized");
         want = address(0xCfEB869F69431e42cdB54A4F4f105C19C080A601);
         balancer = address(0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78);
@@ -231,10 +233,32 @@ contract StrategyBalancerMettalex {
         supply = 0;
     }
 
-//    constructor(address _controller) public {
-//        governance = msg.sender;
-//        controller = _controller;
-//    }
+    function initialize(
+        address _controller,
+        address _want,
+        address _balancer,
+        address _mettalex_vault,
+        address _long_token,
+        address _short_token
+    ) public {
+        // General initializer
+        require(!initialized, "Already initialized");
+        want = _want;
+        balancer = _balancer;
+        mettalex_vault = _mettalex_vault;
+        long_token = _long_token;
+        short_token = _short_token;
+        governance = msg.sender;
+        controller = _controller;
+        breaker = false;
+        supply = 0;
+    }
+
+    // Constructor is removed when using the OpenZeppelin SDK for upgradeable contracts
+    //    constructor(address _controller) public {
+    //        governance = msg.sender;
+    //        controller = _controller;
+    //    }
 
     function setBreaker(bool _breaker) public {
         require(msg.sender == governance, "!governance");
