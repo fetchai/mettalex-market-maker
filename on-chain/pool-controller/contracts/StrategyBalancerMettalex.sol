@@ -352,6 +352,12 @@ contract StrategyBalancerMettalex {
         unbind();
 
         // Redeem position tokens against Mettalex vault
+        // This is for the flow:
+        // Balancer pool initially contains: x coin + x ltk + x stk + d (ltk - stk) (unhedged position)
+        // Unbind (sends x coin to strategy, + x lt stk) and redeem the x ltk, x stk
+        // Total value of strategy now (2 x) coin + (unhedged position)
+        // New liquidity supplied (2 y) - could just mint 50:50 this and rebind instead
+        // as there should be no coin in this strategy apart from new deposits
         redeemPositions();
 
         // Get coin token balance and allocate half to minting position tokens
@@ -387,6 +393,10 @@ contract StrategyBalancerMettalex {
         bPool.bind(want, coin_qty, wt[0]);  // 25000000000000000000);
         bPool.bind(long_token, ltk_qty, wt[1]);  // 12500000000000000000);
         bPool.bind(short_token, stk_qty, wt[2]);  // 12500000000000000000);
+
+        // Post-condition: balancer pool contains (x+y) coin + (x+y) ltk + (x+y) stk + (excess unhedged)
+
+        // TODO: book keeping for added supply
 
 //        uint _after = IERC20(want).balanceOf(address(this));
 //        supply = supply.add(_before.sub(_after));
@@ -433,6 +443,7 @@ contract StrategyBalancerMettalex {
     }
 
     function withdrawM(uint _amount) internal returns (uint) {
+        // MMcD: Not needed?
         if (_amount > supply) {
             // Pool made too much profit, so we reset to 0 to avoid revert
             supply = 0;
@@ -447,6 +458,7 @@ contract StrategyBalancerMettalex {
     }
 
     function withdrawBPT(uint _amount) internal returns (uint) {
+        // MMcD: Not needed?
         uint _calc = calculateRatio(_amount);
         _amount = _amount.sub(_amount.mul(5).div(10000));
         return _withdrawSome(_calc, _amount);
