@@ -281,6 +281,41 @@ def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=Fa
     return spot_price
 
 
+def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, min_qty_out=None, max_price=None):
+    acct = w3.eth.defaultAccount
+
+    qty_in_unitless = int(qty_in * 10**(tok_in.functions.decimals().call()))
+
+    if qty_in_unitless > tok_in.functions.allowance(acct, balancer.address).call():
+        tx_hash = tok_in.functions.approve(balancer.address, qty_in_unitless).transact(
+            {'from': acct, 'gas': 1_000_000}
+        )
+        tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    if min_qty_out is None:
+        # Default to allowing 10% slippage
+        spot_price = get_spot_price(w3, balancer, tok_in, tok_out, unitless=False)
+        min_qty_out = qty_in / spot_price * 0.9
+        print(f'Minimum output token quantity not specified: using {min_qty_out}')
+
+    if max_price is None:
+        spot_price_unitless = get_spot_price(w3, balancer, tok_in, tok_out, unitless=True)
+        max_price = int(spot_price_unitless * 1/0.9)
+        print(f'Max price not specified: using {max_price}')
+
+    min_qty_out_unitless = int(min_qty_out * 10**(tok_out.functions.decimals().call()))
+
+    tx_hash = balancer.functions.swapExactAmountIn(
+        tok_in.address, qty_in_unitless,
+        tok_out.address, min_qty_out_unitless,
+        max_price
+    ).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    return tx_hash
+
+
 def deposit(w3, y_vault, coin, amount):
     acct = w3.eth.defaultAccount
     amount_unitless = int(amount * 10**(coin.functions.decimals().call()))
@@ -297,6 +332,15 @@ def deposit(w3, y_vault, coin, amount):
 def earn(w3, y_vault):
     acct = w3.eth.defaultAccount
     tx_hash = y_vault.functions.earn().transact(
+        {'from': acct, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+
+def withdraw(w3, y_vault, amount):
+    acct = w3.eth.defaultAccount
+    amount_unitless = amount * 10**(y_vault.functions.decimals().call())
+    tx_hash = y_vault.functions.withdraw(amount_unitless).transact(
         {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
@@ -321,6 +365,43 @@ class BalanceReporter(object):
     def print_balances(self, address, name):
         coin_balance, ltk_balance, stk_balance = self.get_balances(address)
         print(f'{name} ({address}) has {coin_balance/10**18:0.2f} coin, {ltk_balance/10**6:0.2f} LTK, {stk_balance/10**6:0.2f} STK')
+
+
+class Balancer(object):
+    def __init__(self, w3, balancer):
+        self.w3 = w3
+        self.balancer = balancer
+
+    def get_spot_price(self, tok_in, tok_out, **kwargs):
+        get_spot_price(self.w3, self.balancer, tok_in, tok_out, **kwargs)
+
+    def swap_amount_in(self, tok_in, qty_in, tok_out, **kwargs):
+        swap_amount_in(self.w3, self.balancer, tok_in, qty_in, tok_out, **kwargs)
+
+
+class System(object):
+    def __init__(self):
+        self.w3 = None
+        self.admin = None
+        self.balancer_factory = None
+        self.balancer = None
+        self.coin = None
+        self.ltk = None
+        self.stk = None
+        self.vault =None
+        self.y_controller = None
+        self.y_vault = None
+        self.strategy = None
+
+    def deploy(self):
+        (
+            self.w3, self.admin, self.balancer_factory, self.balancer,
+            self.coin, self.ltk, self.stk, self.vault, self.y_controller,
+            self.y_vault, self.strategy
+         ) = full_setup()
+
+    def get_balancer(self):
+        return Balancer(self.w3, self.balancer)
 
 
 if __name__ == '__main__':

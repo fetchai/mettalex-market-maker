@@ -349,6 +349,8 @@ contract StrategyBalancerMettalex {
         MettalexVault mVault = MettalexVault(mettalex_vault);
 
         // Unbind tokens from Balancer pool
+        bPool.setPublicSwap(false);
+
         unbind();
 
         // Redeem position tokens against Mettalex vault
@@ -368,12 +370,16 @@ contract StrategyBalancerMettalex {
 
         uint _before = _balance;
         mVault.mintFromCollateralAmount(_want);
+        uint _after = IERC20(want).balanceOf(address(this));
+        supply = supply.add(_before.sub(_after));
+
+        _before = IERC20(want).balanceOf(address(this));
 
         uint coin_qty = IERC20(want).balanceOf(address(this));
         uint ltk_qty = IERC20(long_token).balanceOf(address(this));
         uint stk_qty = IERC20(short_token).balanceOf(address(this));
 
-        // Approve transfer Balancer balancer pool
+        // Approve transfer to balancer pool
         IERC20(want).safeApprove(balancer, 0);
         IERC20(want).safeApprove(balancer, coin_qty);
         IERC20(long_token).safeApprove(balancer, 0);
@@ -382,8 +388,8 @@ contract StrategyBalancerMettalex {
         IERC20(short_token).safeApprove(balancer, stk_qty);
 
         // Then supply minted tokens and remaining collateral to Balancer pool
-//        uint price_pct = 50;
-//        uint spot = mVault.priceFloor().add(mVault.priceCap().sub(mVault.priceFloor()).mul(price_pct).div(100));
+        //    uint price_pct = 50;
+        //    uint spot = mVault.priceFloor().add(mVault.priceCap().sub(mVault.priceFloor()).mul(price_pct).div(100));
         uint[3] memory bal;
         bal[0] = coin_qty;
         bal[1] = ltk_qty;
@@ -393,41 +399,11 @@ contract StrategyBalancerMettalex {
         bPool.bind(want, coin_qty, wt[0]);  // 25000000000000000000);
         bPool.bind(long_token, ltk_qty, wt[1]);  // 12500000000000000000);
         bPool.bind(short_token, stk_qty, wt[2]);  // 12500000000000000000);
+        bPool.setPublicSwap(true);
 
         // Post-condition: balancer pool contains (x+y) coin + (x+y) ltk + (x+y) stk + (excess unhedged)
-
-        // TODO: book keeping for added supply
-
-//        uint _after = IERC20(want).balanceOf(address(this));
-//        supply = supply.add(_before.sub(_after));
-//
-//        uint _long = IERC20(long_token).balanceOf(address(this));
-//        uint _short = IERC20(short_token).balanceOf(address(this));
-
-//        uint _total = IERC20(balancer).totalSupply();
-//        uint _balancerMUSD = IERC20(mUSD).balanceOf(balancer);
-//        uint _poolAmountMUSD = _musd.mul(_total).div(_balancerMUSD);
-//
-//        uint _balancerUSDC = IERC20(want).balanceOf(balancer);
-//        uint _poolAmountUSDC = _want.mul(_total).div(_balancerUSDC);
-//
-//        uint _poolAmountOut = _poolAmountMUSD;
-//        if (_poolAmountUSDC < _poolAmountOut) {
-//            _poolAmountOut = _poolAmountUSDC;
-//        }
-//
-//        IERC20(want).safeApprove(balancer, 0);
-//        IERC20(want).safeApprove(balancer, _want);
-//        IERC20(mUSD).safeApprove(balancer, 0);
-//        IERC20(mUSD).safeApprove(balancer, _musd);
-//
-//        uint[] memory _maxAmountIn = new uint[](2);
-//        _maxAmountIn[0] = _musd;
-//        _maxAmountIn[1] = _want;
-//        _before = IERC20(want).balanceOf(address(this));
-//        Balancer(balancer).joinPool(_poolAmountOut, _maxAmountIn);
-//        _after = IERC20(want).balanceOf(address(this));
-//        supply = supply.add(_before.sub(_after));
+        _after = IERC20(want).balanceOf(address(this));
+        supply = supply.add(_before.sub(_after));
     }
 
     // Controller only function for creating additional rewards from dust
