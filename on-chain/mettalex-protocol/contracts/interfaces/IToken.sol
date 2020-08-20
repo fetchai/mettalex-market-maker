@@ -1,6 +1,6 @@
 pragma solidity ^0.5.2;
 
-contract IToken {
+interface IToken {
     function balanceOf(address account) external view returns (uint256);
 
     function mint(address _to, uint256 _value) external;
