@@ -86,6 +86,29 @@ can be used to upgrade the strategy contract for development.
     (feature-token) >> python setup_contracts.py -a earn
 
 
+Or from within IPython console
+
+    %load_ext autoreload
+    %autoreload 2
+    import os
+    import sys
+    os.chdir('price-leveraged-token/market-maker/on-chain')
+    sys.path.append(os.getcwd())
+    from setup_contracts import full_setup, deposit, earn, BalanceReporter, upgrade_strategy, set_price, get_spot_price, swap_amount_in, connect_deployed, withdraw
+    
+    w3, contracts = connect_deployed()
+    y_vault = contracts['YVault']
+    coin = contracts['Coin']
+    ltk = contracts['Long']
+    stk = contracts['Short']
+    reporter = BalanceReporter(w3, coin, ltk, stk)
+    balancer = contracts['BPool']
+    deposit(w3, y_vault, coin, 200000)
+    earn(w3, y_vault)
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+    withdraw(w3, y_vault, 11000)
+
 ## Addresses
 Admin deploys Balancer Pool Factory and creates Balancer Pool
 * Account 0 deploys Balancer Pool Factory to `0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab`
