@@ -59,6 +59,33 @@ a set of accounts:
     Base HD Path:  m/44'/60'/0'/0/{account_index}
     
 
+## Python setup
+From this directory the `setup_contracts.py` script will deploy and connect the contracts.
+Once contracts have been deployed the Makefile in `pool-controller` subdirectory
+can be used to upgrade the strategy contract for development.
+
+    (feature-token) >> python setup_contracts.py --help
+    usage: Mettalex System Setup [-h] [--action ACTION] [--quantity QTY]
+    
+    optional arguments:
+      -h, --help            show this help message and exit
+      --action ACTION, -a ACTION
+                            Action to perform: deposit, earn, connect_balancer,
+                            deploy (default)
+      --quantity QTY, -q QTY
+                            Quantity of collateral tokens to transfer (scaled)
+
+    (feature-token) >> python setup_contracts.py -a deploy
+    Long Position whitelist state for 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb changed from False to True
+    Short Position whitelist state for 0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb changed from False to True
+    Tether USD strategy changed from 0x0000000000000000000000000000000000000000 to 0x9b1f7F645351AF3631a656421eD2e40f2802E6c0
+    Balancer controller 0x9b1f7F645351AF3631a656421eD2e40f2802E6c0
+    Mettalex Vault strategy changed from 0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78 to 0x9b1f7F645351AF3631a656421eD2e40f2802E6c0
+    Mettalex Vault spot changed from 0 to 2500000
+    (feature-token) >> python setup_contracts.py -a deposit -q 20000
+    (feature-token) >> python setup_contracts.py -a earn
+
+
 ## Addresses
 Admin deploys Balancer Pool Factory and creates Balancer Pool
 * Account 0 deploys Balancer Pool Factory to `0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab`

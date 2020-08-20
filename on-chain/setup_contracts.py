@@ -2,6 +2,7 @@ import os
 import subprocess
 from pathlib import Path
 import json
+import argparse
 
 os.environ['WEB3_PROVIDER_URI'] = 'http://127.0.0.1:8545'
 
@@ -69,6 +70,21 @@ def deploy_contract(w3, contract, *args):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     deployed_contract = w3.eth.contract(
          address=tx_receipt.contractAddress,
+         abi=contract.abi
+    )
+    return deployed_contract
+
+
+def connect_contract(w3, contract, address):
+    """Connect to existing deployed contract
+
+    :param w3:
+    :param contract:
+    :param address:
+    :return:
+    """
+    deployed_contract = w3.eth.contract(
+         address=address,
          abi=contract.abi
     )
     return deployed_contract
@@ -147,8 +163,34 @@ def deploy(w3, contracts):
         ltk,
         stk
     )
-
+    deployed_contracts = {
+        'BFactory': balancer_factory.address,
+        'BPool': balancer.address,
+        'Coin': coin.address,
+        'Long': ltk.address,
+        'Short': stk.address,
+        'Vault': vault.address,
+        'YVault': y_vault.address,
+        'YController': y_controller.address,
+        'PoolController': strategy.address
+    }
+    with open('contract_cache.json', 'w') as f:
+        json.dump(deployed_contracts, f)
     return balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
+
+
+def connect_deployed():
+    if not os.path.isfile('contract_cache.json'):
+        print('No cache file')
+        return
+    with open('contract_cache.json', 'r') as f:
+        contract_cache = json.load(f)
+    w3, admin = connect()
+    contracts = get_contracts(w3)
+    deployed_contracts = {
+        k: connect_contract(w3, contracts[k], contract_cache[k]) for k in contracts.keys()
+    }
+    return w3, deployed_contracts
 
 
 def set_token_whitelist(w3, tok, address, state=True):
@@ -405,6 +447,34 @@ class System(object):
 
 
 if __name__ == '__main__':
-    w3, admin = connect()
-    balancer = connect_balancer(w3)
-    set_balancer_controller(w3, balancer, controller_address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0')
+    parser = argparse.ArgumentParser('Mettalex System Setup')
+    parser.add_argument(
+        '--action', '-a', dest='action', default='deploy',
+        help='Action to perform: deposit, earn, connect_balancer, deploy (default)'
+    )
+    parser.add_argument(
+        '--quantity', '-q', dest='qty', default=0,
+        help='Quantity of collateral tokens to transfer (scaled)'
+    )
+
+    args = parser.parse_args()
+    if args.action == 'deploy':
+        (w3, admin, balancer_factory, balancer,
+         coin, ltk, stk, vault,
+         y_controller, y_vault, strategy) = full_setup()
+
+    elif args.action == 'deposit':
+        w3, contracts = connect_deployed()
+        y_vault = contracts['YVault']
+        coin = contracts['Coin']
+        deposit(w3, y_vault, coin, float(args.qty))
+
+    elif args.action == 'earn':
+        w3, contracts = connect_deployed()
+        y_vault = contracts['YVault']
+        earn(w3, y_vault)
+
+    elif args.action == 'connect_balancer':
+        w3, admin = connect()
+        balancer = connect_balancer(w3)
+        set_balancer_controller(w3, balancer, controller_address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0')
