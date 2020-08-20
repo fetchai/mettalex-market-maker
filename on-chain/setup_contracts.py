@@ -389,24 +389,28 @@ def withdraw(w3, y_vault, amount):
 
 
 class BalanceReporter(object):
-    def __init__(self, w3, coin, ltk, stk):
+    def __init__(self, w3, coin, ltk, stk, y_vault):
         self.w3 = w3
         self.coin = coin
         self.ltk = ltk
         self.stk = stk
+        self.y_vault = y_vault
         self.coin_scale = 10**18
         self.ltk_scale = 10**6
         self.stk_scale = 10**6
+        self.y_vault_scale = 10**18
 
     def get_balances(self, address):
         coin_balance = self.coin.functions.balanceOf(address).call()
         ltk_balance = self.ltk.functions.balanceOf(address).call()
         stk_balance = self.stk.functions.balanceOf(address).call()
-        return coin_balance, ltk_balance, stk_balance
+        y_vault_balance = self.y_vault.functions.balanceOf(address).call()
+        return coin_balance, ltk_balance, stk_balance, y_vault_balance
 
     def print_balances(self, address, name):
-        coin_balance, ltk_balance, stk_balance = self.get_balances(address)
-        print(f'{name} ({address}) has {coin_balance/10**18:0.2f} coin, {ltk_balance/10**6:0.2f} LTK, {stk_balance/10**6:0.2f} STK')
+        coin_balance, ltk_balance, stk_balance, y_vault_balance = self.get_balances(address)
+        print(f'{name} ({address}) has {y_vault_balance/10**18:0.2f} vault shares')
+        print(f'  {coin_balance/10**18:0.2f} coin, {ltk_balance/10**6:0.2f} LTK, {stk_balance/10**6:0.2f} STK')
 
 
 class Balancer(object):
@@ -450,7 +454,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
     parser.add_argument(
         '--action', '-a', dest='action', default='deploy',
-        help='Action to perform: deposit, earn, connect_balancer, deploy (default)'
+        help='Action to perform: deposit, earn, connect_balancer, upgrade, deploy (default)'
     )
     parser.add_argument(
         '--quantity', '-q', dest='qty', default=0,
@@ -462,19 +466,44 @@ if __name__ == '__main__':
         (w3, admin, balancer_factory, balancer,
          coin, ltk, stk, vault,
          y_controller, y_vault, strategy) = full_setup()
-
-    elif args.action == 'deposit':
-        w3, contracts = connect_deployed()
-        y_vault = contracts['YVault']
-        coin = contracts['Coin']
-        deposit(w3, y_vault, coin, float(args.qty))
-
-    elif args.action == 'earn':
-        w3, contracts = connect_deployed()
-        y_vault = contracts['YVault']
-        earn(w3, y_vault)
-
     elif args.action == 'connect_balancer':
         w3, admin = connect()
         balancer = connect_balancer(w3)
         set_balancer_controller(w3, balancer, controller_address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0')
+
+    else:
+        w3, contracts = connect_deployed()
+        (
+            balancer_factory, balancer, coin, ltk, stk, vault,
+            y_controller, y_vault, strategy
+        ) = (
+            contracts[name] for name in [
+                'BFactory', 'BPool', 'Coin', 'Long', 'Short', 'Vault',
+                'YController', 'YVault', 'PoolController'
+            ]
+        )
+        reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
+        if args.action == 'deposit':
+            deposit(w3, y_vault, coin, float(args.qty))
+            reporter.print_balances(w3.eth.defaultAccount, 'User')
+            reporter.print_balances(y_vault.address, 'Vault')
+            reporter.print_balances(balancer.address, 'AMM')
+
+        elif args.action == 'earn':
+            earn(w3, y_vault)
+            reporter.print_balances(w3.eth.defaultAccount, 'User')
+            reporter.print_balances(y_vault.address, 'Vault')
+            reporter.print_balances(balancer.address, 'AMM')
+
+        elif args.action == 'upgrade':
+            strategy = upgrade_strategy(
+                w3,
+                strategy,
+                y_controller,
+                coin,
+                balancer,
+                vault,
+                ltk,
+                stk
+            )
+
