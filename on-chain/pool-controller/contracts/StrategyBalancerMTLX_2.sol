@@ -540,9 +540,9 @@ contract StrategyBalancerMettalex {
         uint256[3] memory wt = calcDenormWeights(bal);
 
         // Rebind tokens to balancer pool again with newly calculated weights
-        bPool.rebind(want, starategyWant, wt[0]);
-        bPool.rebind(long_token, strategyLtk, wt[1]);
-        bPool.rebind(short_token, strategyStk, wt[2]);
+        bPool.rebind(want, starategyWant.add(balancerWant), wt[0]);
+        bPool.rebind(long_token, strategyLtk.add(balancerLtk), wt[1]);
+        bPool.rebind(short_token, strategyStk.add(balancerStk), wt[2]);
     }
 
     // Withdraw partial funds, normally used with a vault withdrawal
