@@ -574,15 +574,31 @@ contract StrategyBalancerMettalex {
 
     function balanceOf() public view returns (uint256) {
         return
-            IERC20(want).balanceOf(address(this)).add(
-                IERC20(want).balanceOf(address(balancer))
-            );
+            IERC20(want).balanceOf(address(this)).add(_getBalancerPoolValue());
     }
 
     // This function should return Total valuation of balancer pool.
     // i.e. ( LTK + STK + Coin ) from balancer pool.
-    function _getBalancerPoolValue() private {
-        return IERC20(want).balanceOf(address(balancer));
+    function _getBalancerPoolValue() private returns (uint256) {
+        uint256 poolStkBalance = IERC20(short_token).balanceOf(
+            address(balancer)
+        );
+        uint256 poolLtkBalance = IERC20(long_token).balanceOf(
+            address(balancer)
+        );
+        uint256 collateralPerUnit = MettalexVault(mettalex_vault)
+            .collateralPerUnit;
+        uint256 totalValuation;
+        if (poolStkBalance >= poolLtkBalance) {
+            totalValuation = IERC20(want).balanceOf(address(balancer)).add(
+                poolLtkBalance.mul(collateralPerUnit)
+            );
+        } else {
+            totalValuation = IERC20(want).balanceOf(address(balancer)).add(
+                poolStkBalance.mul(collateralPerUnit)
+            );
+        }
+        return totalValuation;
     }
 
     function setGovernance(address _governance) external {
