@@ -1,11 +1,12 @@
 pragma solidity ^0.5.2;
 
-import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/ownership/Ownable.sol";
 import "../interfaces/IToken.sol";
+import "../libraries/SafeERC20.sol";
 
 contract Vault is Ownable {
     using SafeMath for uint256;
+    using SafeERC20 for IToken;
 
     string public contractName;
     uint256 public version;
@@ -18,11 +19,10 @@ contract Vault is Ownable {
     uint256 public collateralFeePerUnit;
     uint256 private collateralWithFeePerUnit;
 
-    uint8 private constant MAX_SETTLEMENT_LENGTH = 120;
     uint256 public settlementPrice;
     uint256 public settlementTimeStamp;
     bool public isSettled = false;
-
+    uint8 private constant MAX_SETTLEMENT_LENGTH = 120;
     address public collateralToken;
     address public longPositionToken;
     address public shortPositionToken;
@@ -133,18 +133,14 @@ contract Vault is Ownable {
         uint256 collateralRequired = collateralPerUnit.mul(_quantityToMint);
         uint256 collateralFee = _calculateFee(_quantityToMint);
 
-        IToken collateral = IToken(collateralToken);
-        collateral.transferFrom(
+        IToken(collateralToken).safeTransferFrom(
             msg.sender,
             address(this),
             collateralRequired.add(collateralFee)
         );
 
-        IToken long = IToken(longPositionToken);
-        IToken short = IToken(shortPositionToken);
-
-        long.mint(msg.sender, _quantityToMint);
-        short.mint(msg.sender, _quantityToMint);
+        IToken(longPositionToken).mint(msg.sender, _quantityToMint);
+        IToken(shortPositionToken).mint(msg.sender, _quantityToMint);
         emit PositionsMinted(
             msg.sender,
             _quantityToMint,
@@ -178,14 +174,14 @@ contract Vault is Ownable {
             uint256 quantityToMint
         ) = _calculateFeeAndPositions(_collateralAmount);
 
-        IToken collateral = IToken(collateralToken);
-        collateral.transferFrom(msg.sender, address(this), _collateralAmount);
+        IToken(collateralToken).safeTransferFrom(
+            msg.sender,
+            address(this),
+            _collateralAmount
+        );
 
-        IToken long = IToken(longPositionToken);
-        IToken short = IToken(shortPositionToken);
-
-        long.mint(msg.sender, quantityToMint);
-        short.mint(msg.sender, quantityToMint);
+        IToken(longPositionToken).mint(msg.sender, quantityToMint);
+        IToken(shortPositionToken).mint(msg.sender, quantityToMint);
         emit PositionsMinted(
             msg.sender,
             quantityToMint,
@@ -214,12 +210,10 @@ contract Vault is Ownable {
     }
 
     function claimFee(address _to) external onlyOwner {
-        IToken collateral = IToken(collateralToken);
-
         uint256 claimedCollateral = feeAccumulated;
         feeAccumulated = 0;
 
-        collateral.transfer(_to, claimedCollateral);
+        IToken(collateralToken).safeTransfer(_to, claimedCollateral);
         emit FeeClaimed(_to, claimedCollateral);
     }
 
@@ -242,16 +236,13 @@ contract Vault is Ownable {
         address _to, // Destination address for collateral redeemed
         uint256 _redeemQuantity
     ) public {
-        IToken long = IToken(longPositionToken);
-        IToken short = IToken(shortPositionToken);
-        long.burn(msg.sender, _redeemQuantity);
-        short.burn(msg.sender, _redeemQuantity);
+        IToken(longPositionToken).burn(msg.sender, _redeemQuantity);
+        IToken(shortPositionToken).burn(msg.sender, _redeemQuantity);
 
-        IToken collateral = IToken(collateralToken);
         uint256 collateralReturned = collateralPerUnit.mul(_redeemQuantity);
         // Destination address may not be the same as sender e.g. send to
         // exchange wallet receive funds address
-        collateral.transfer(_to, collateralReturned);
+        IToken(collateralToken).safeTransfer(_to, collateralReturned);
 
         emit PositionsRedeemed(_to, _redeemQuantity, collateralReturned);
     }
@@ -281,21 +272,22 @@ contract Vault is Ownable {
 
         _long.burn(_settler, longBalance);
         _short.burn(_settler, shortBalance);
-        _collateral.transfer(_settler, collateralReturned);
+        _collateral.safeTransfer(_settler, collateralReturned);
 
         return (longBalance, shortBalance, collateralReturned);
     }
 
     function settlePositions() external settled {
-        IToken _collateral = IToken(collateralToken);
-        IToken _long = IToken(longPositionToken);
-        IToken _short = IToken(shortPositionToken);
-
         (
             uint256 longBurned,
             uint256 shortBurned,
             uint256 collateralReturned
-        ) = _settle(msg.sender, _collateral, _long, _short);
+        ) = _settle(
+            msg.sender,
+            IToken(collateralToken),
+            IToken(longPositionToken),
+            IToken(shortPositionToken)
+        );
 
         emit PositionSettled(
             msg.sender,
@@ -311,9 +303,9 @@ contract Vault is Ownable {
         settled
         withinMaxLength(uint8(_settlers.length))
     {
-        uint256 totalLongBurned = 0;
-        uint256 totalShortBurned = 0;
-        uint256 totalCollateralReturned = 0;
+        uint256 totalLongBurned;
+        uint256 totalShortBurned;
+        uint256 totalCollateralReturned;
 
         IToken collateral = IToken(collateralToken);
         IToken long = IToken(longPositionToken);
