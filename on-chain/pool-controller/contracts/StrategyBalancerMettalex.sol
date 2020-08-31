@@ -1,309 +1,12 @@
-/**
- *Submitted for verification at Etherscan.io on 2020-07-27
- */
-
 pragma solidity ^0.5.16;
 
-interface IERC20 {
-    function totalSupply() external view returns (uint256);
-
-    function balanceOf(address account) external view returns (uint256);
-
-    function transfer(address recipient, uint256 amount)
-        external
-        returns (bool);
-
-    function allowance(address owner, address spender)
-        external
-        view
-        returns (uint256);
-
-    function approve(address spender, uint256 amount) external returns (bool);
-
-    function transferFrom(
-        address sender,
-        address recipient,
-        uint256 amount
-    ) external returns (bool);
-
-    function decimals() external view returns (uint256);
-
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(
-        address indexed owner,
-        address indexed spender,
-        uint256 value
-    );
-}
-
-library SafeMath {
-    function add(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 c = a + b;
-        require(c >= a, "SafeMath: addition overflow");
-
-        return c;
-    }
-
-    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
-        return sub(a, b, "SafeMath: subtraction overflow");
-    }
-
-    function sub(
-        uint256 a,
-        uint256 b,
-        string memory errorMessage
-    ) internal pure returns (uint256) {
-        require(b <= a, errorMessage);
-        uint256 c = a - b;
-
-        return c;
-    }
-
-    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-        if (a == 0) {
-            return 0;
-        }
-
-        uint256 c = a * b;
-        require(c / a == b, "SafeMath: multiplication overflow");
-
-        return c;
-    }
-
-    function div(uint256 a, uint256 b) internal pure returns (uint256) {
-        return div(a, b, "SafeMath: division by zero");
-    }
-
-    function div(
-        uint256 a,
-        uint256 b,
-        string memory errorMessage
-    ) internal pure returns (uint256) {
-        // Solidity only automatically asserts when dividing by 0
-        require(b > 0, errorMessage);
-        uint256 c = a / b;
-
-        return c;
-    }
-
-    function mod(uint256 a, uint256 b) internal pure returns (uint256) {
-        return mod(a, b, "SafeMath: modulo by zero");
-    }
-
-    function mod(
-        uint256 a,
-        uint256 b,
-        string memory errorMessage
-    ) internal pure returns (uint256) {
-        require(b != 0, errorMessage);
-        return a % b;
-    }
-}
-
-library Address {
-    function isContract(address account) internal view returns (bool) {
-        bytes32 codehash;
-
-
-            bytes32 accountHash
-         = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-            codehash := extcodehash(account)
-        }
-        return (codehash != 0x0 && codehash != accountHash);
-    }
-
-    function toPayable(address account)
-        internal
-        pure
-        returns (address payable)
-    {
-        return address(uint160(account));
-    }
-
-    function sendValue(address payable recipient, uint256 amount) internal {
-        require(
-            address(this).balance >= amount,
-            "Address: insufficient balance"
-        );
-
-        // solhint-disable-next-line avoid-call-value
-        (bool success, ) = recipient.call.value(amount)("");
-        require(
-            success,
-            "Address: unable to send value, recipient may have reverted"
-        );
-    }
-}
-
-library SafeERC20 {
-    using SafeMath for uint256;
-    using Address for address;
-
-    function safeTransfer(
-        IERC20 token,
-        address to,
-        uint256 value
-    ) internal {
-        callOptionalReturn(
-            token,
-            abi.encodeWithSelector(token.transfer.selector, to, value)
-        );
-    }
-
-    function safeTransferFrom(
-        IERC20 token,
-        address from,
-        address to,
-        uint256 value
-    ) internal {
-        callOptionalReturn(
-            token,
-            abi.encodeWithSelector(token.transferFrom.selector, from, to, value)
-        );
-    }
-
-    function safeApprove(
-        IERC20 token,
-        address spender,
-        uint256 value
-    ) internal {
-        require(
-            (value == 0) || (token.allowance(address(this), spender) == 0),
-            "SafeERC20: approve from non-zero to non-zero allowance"
-        );
-        callOptionalReturn(
-            token,
-            abi.encodeWithSelector(token.approve.selector, spender, value)
-        );
-    }
-
-    function callOptionalReturn(IERC20 token, bytes memory data) private {
-        require(address(token).isContract(), "SafeERC20: call to non-contract");
-
-        // solhint-disable-next-line avoid-low-level-calls
-        (bool success, bytes memory returndata) = address(token).call(data);
-        require(success, "SafeERC20: low-level call failed");
-
-        if (returndata.length > 0) {
-            // Return data is optional
-            // solhint-disable-next-line max-line-length
-            require(
-                abi.decode(returndata, (bool)),
-                "SafeERC20: ERC20 operation did not succeed"
-            );
-        }
-    }
-}
-
-interface Controller {
-    function vaults(address) external view returns (address);
-}
-
-interface Balancer {
-    function isPublicSwap() external view returns (bool);
-
-    function isFinalized() external view returns (bool);
-
-    function isBound(address t) external view returns (bool);
-
-    function getNumTokens() external view returns (uint256);
-
-    function getCurrentTokens() external view returns (address[] memory tokens);
-
-    function getFinalTokens() external view returns (address[] memory tokens);
-
-    function getDenormalizedWeight(address token)
-        external
-        view
-        returns (uint256);
-
-    function getTotalDenormalizedWeight() external view returns (uint256);
-
-    function getNormalizedWeight(address token) external view returns (uint256);
-
-    function getBalance(address token) external view returns (uint256);
-
-    function getSwapFee() external view returns (uint256);
-
-    function getController() external view returns (address);
-
-    function setSwapFee(uint256 swapFee) external;
-
-    function setController(address manager) external;
-
-    function setPublicSwap(bool public_) external;
-
-    function finalize() external;
-
-    function bind(
-        address token,
-        uint256 balance,
-        uint256 denorm
-    ) external;
-
-    function rebind(
-        address token,
-        uint256 balance,
-        uint256 denorm
-    ) external;
-
-    function unbind(address token) external;
-
-    function gulp(address token) external;
-
-    function getSpotPrice(address tokenIn, address tokenOut)
-        external
-        view
-        returns (uint256 spotPrice);
-
-    function getSpotPriceSansFee(address tokenIn, address tokenOut)
-        external
-        view
-        returns (uint256 spotPrice);
-
-    function calcSpotPrice(
-        uint256 tokenBalanceIn,
-        uint256 tokenWeightIn,
-        uint256 tokenBalanceOut,
-        uint256 tokenWeightOut,
-        uint256 swapFee
-    ) external pure returns (uint256 spotPrice);
-
-    function calcOutGivenIn(
-        uint256 tokenBalanceIn,
-        uint256 tokenWeightIn,
-        uint256 tokenBalanceOut,
-        uint256 tokenWeightOut,
-        uint256 tokenAmountIn,
-        uint256 swapFee
-    ) external pure returns (uint256 tokenAmountOut);
-}
-
-interface MettalexVault {
-    function collateralPerUnit()
-        external
-        view
-        returns (uint256 _collateralPerUnit);
-
-    function collateralFeePerUnit()
-        external
-        view
-        returns (uint256 _collateralFeePerUnit);
-
-    function priceFloor() external view returns (uint256 _priceFloor);
-
-    function priceSpot() external view returns (uint256 _priceSpot);
-
-    function priceCap() external view returns (uint256 _priceCap);
-
-    function mintPositions(uint256 qtyToMint) external;
-
-    function redeemPositions(uint256 qtyToRedeem) external;
-
-    function mintFromCollateralAmount(uint256 _collateralAmount) external;
-}
+import "./interfaces/Ibalancer.sol";
+import "./interfaces/IERC20.sol";
+import "./interfaces/IMtlxVault.sol";
+import "./interfaces/IYController.sol";
+import "./lib/Address.sol";
+import "./lib/SafeMath.sol";
+import "./lib/SafeERC20.sol";
 
 /*
 
@@ -435,6 +138,7 @@ contract StrategyBalancerMettalex {
 
     function calcDenormWeights(uint256[3] memory bal)
         internal
+        view
         returns (uint256[3] memory wt)
     {
         //  Number of collateral tokens per pair of long and short tokens
@@ -481,7 +185,6 @@ contract StrategyBalancerMettalex {
     function deposit() external {
         require(breaker == false, "!breaker");
         Balancer bPool = Balancer(balancer);
-        MettalexVault mVault = MettalexVault(mettalex_vault);
 
         uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
             address(this)
@@ -578,8 +281,6 @@ contract StrategyBalancerMettalex {
 
         redeemPositions();
 
-        uint256 wantAfterPoolRedeem = IERC20(want).balanceOf(address(this));
-
         // Transfer out required funds to yVault.
         IERC20(want).transfer(Controller(controller).vaults(want), _amount);
 
@@ -590,14 +291,14 @@ contract StrategyBalancerMettalex {
         supply = supply.sub(_amount);
     }
 
-    function balanceOf() external returns (uint256) {
+    function balanceOf() external view returns (uint256) {
         uint256 bpoolValuation = _getBalancerPoolValue();
         return IERC20(want).balanceOf(address(this)).add(bpoolValuation);
     }
 
     // This function should return Total valuation of balancer pool.
     // i.e. ( LTK + STK + Coin ) from balancer pool.
-    function _getBalancerPoolValue() internal returns (uint256) {
+    function _getBalancerPoolValue() internal view returns (uint256) {
         uint256 poolStkBalance = IERC20(short_token).balanceOf(
             address(balancer)
         );
