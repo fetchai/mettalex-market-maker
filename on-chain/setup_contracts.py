@@ -277,6 +277,12 @@ def set_price(w3, vault, price):
     vault_name = vault.functions.contractName().call()
     print(f'{vault_name} spot changed from {old_spot} to {new_spot}')
 
+def set_yvault_controller(w3, y_controller, y_vault_address, token_address):
+    acct = w3.eth.defaultAccount
+    tx_hash = y_controller.functions.setVault(token_address, y_vault_address).transact({'from':acct, 'gas': 1_000_000})
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print('yVault added in yController')
+
 
 def full_setup():
     w3, admin = connect()
@@ -284,6 +290,7 @@ def full_setup():
     balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy = deploy(w3, contracts)
     whitelist_vault(w3, vault, ltk, stk)
     set_strategy(w3, y_controller, coin, strategy)
+    set_yvault_controller(w3, y_controller, y_vault.address, coin.address)
     set_balancer_controller(w3, balancer, strategy)
     set_autonomous_market_maker(w3, vault, strategy)  # Zero fees for AMM
     set_price(w3, vault, 2500000)
@@ -386,8 +393,7 @@ def withdraw(w3, y_vault, amount):
         {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-
-
+    
 class BalanceReporter(object):
     def __init__(self, w3, coin, ltk, stk, y_vault):
         self.w3 = w3
