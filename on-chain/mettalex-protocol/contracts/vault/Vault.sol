@@ -72,19 +72,19 @@ contract Vault is Ownable {
     );
 
     /**
-     * @dev The Vault constructor sets initial values.
-     * @param _name string The name of the Vault.
-     * @param _version uint256 The version of the Vault.
-     * @param _collateralToken address The address of the collateral token.
-     * @param _longPosition address The collateral token address.
-     * @param _shortPosition address The short position token address.
-     * @param _oracleAddress address The long position token address.
-     * @param _automatedMarketMaker address The automated market maker address.
-     * @param _cap uint256 The cap for asset price.
-     * @param _floor uint256 The floor for asset price.
+     * @dev The Vault constructor sets initial values
+     * @param _name string The name of the Vault
+     * @param _version uint256 The version of the Vault
+     * @param _collateralToken address The address of the collateral token
+     * @param _longPosition address The collateral token address
+     * @param _shortPosition address The short position token address
+     * @param _oracleAddress address The long position token address
+     * @param _automatedMarketMaker address The automated market maker address
+     * @param _cap uint256 The cap for asset price
+     * @param _floor uint256 The floor for asset price
      * @param _multiplier uint256 multiplier corresponding to the value of 1
      * increment in price to token base units
-     * @param _feeRate uint256 The fee rate for locking collateral.
+     * @param _feeRate uint256 The fee rate for locking collateral
      */
     constructor(
         string memory _name,
@@ -120,7 +120,7 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Throws if called by any account other than Oracle.
+     * @dev Throws if called by any account other than Oracle
      */
     modifier onlyOracle {
         require(msg.sender == oracle, "ORACLE_ONLY");
@@ -128,7 +128,7 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Throws if contract is settled.
+     * @dev Throws if contract is settled
      */
     modifier notSettled {
         require(!isSettled, "Contract is already settled");
@@ -136,7 +136,7 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Throws if contract is not settled.
+     * @dev Throws if contract is not settled
      */
     modifier settled {
         require(isSettled, "Contract should be settled");
@@ -144,7 +144,7 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Throws if more than max-allowed number of addresses passed to settle.
+     * @dev Throws if more than max-allowed number of addresses passed to settle
      */
     modifier withinMaxLength(uint8 settlerLength) {
         require(
@@ -155,8 +155,8 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Used to claim fee accumulated by the vault.
-     * @param _to address The address to transfer the fee.
+     * @dev Used to claim fee accumulated by the vault
+     * @param _to address The address to transfer the fee
      */
     function claimFee(address _to) external onlyOwner {
         uint256 claimedCollateral = feeAccumulated;
@@ -167,8 +167,8 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Changes the spot price of an asset.
-     * @param _price uint256 The updated price.
+     * @dev Changes the spot price of an asset
+     * @param _price uint256 The updated price
      */
     function updateSpot(uint256 _price) external onlyOracle notSettled {
         // update spot if arbitration price is within contract bounds else settlecontract
@@ -181,8 +181,8 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Changes the address of Oracle contract.
-     * @param _newOracle address The address of new oracle contract.
+     * @dev Changes the address of Oracle contract
+     * @param _newOracle address The address of new oracle contract
      */
     function updateOracle(address _newOracle) external onlyOwner {
         emit OracleUpdated(oracle, _newOracle);
@@ -190,8 +190,8 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Changes the address of Automated Market Maker.
-     * @param _newAMM address The address of new automated market maker.
+     * @dev Changes the address of Automated Market Maker
+     * @param _newAMM address The address of new automated market maker
      */
     function updateAutomatedMarketMaker(address _newAMM) external onlyOwner {
         emit AutomatedMarketMakerUpdated(automatedMarketMaker, _newAMM);
@@ -199,8 +199,8 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Mints the Long and Short position tokens.
-     * @param _quantityToMint uint256 The amount of positions to be minted.
+     * @dev Mints the Long and Short position tokens
+     * @param _quantityToMint uint256 The amount of positions to be minted
      */
     function mintPositions(uint256 _quantityToMint) external notSettled {
         uint256 collateralRequired = collateralPerUnit.mul(_quantityToMint);
@@ -223,8 +223,8 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Mints the Long and Short position tokens based on amount of collateral.
-     * @param _collateralAmount uint256 The amount of collateral to be deposited.
+     * @dev Mints the Long and Short position tokens based on amount of collateral
+     * @param _collateralAmount uint256 The amount of collateral to be deposited
      */
     function mintFromCollateralAmount(uint256 _collateralAmount)
         external
@@ -252,9 +252,9 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Redeems the given amount of positions held by user.
-     * @dev Overloaded method to redeem collateral to sender address.
-     * @param _quantityToRedeem uint256 The quantity of position tokens to redeem.
+     * @dev Redeems the given amount of positions held by user
+     * @dev Overloaded method to redeem collateral to sender address
+     * @param _quantityToRedeem uint256 The quantity of position tokens to redeem
      */
 
     function redeemPositions(uint256 _quantityToRedeem) external {
@@ -262,7 +262,7 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Settles by returning collateral and burning positions.
+     * @dev Settles by returning collateral and burning positions
      */
     function settlePositions() external settled {
         (
@@ -285,8 +285,8 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Settles multiple addresses at once.
-     * @param _settlers address[] The array of user accounts to settle.
+     * @dev Settles multiple addresses at once
+     * @param _settlers address[] The array of user accounts to settle
      */
     function bulkSettlePositions(address[] calldata _settlers)
         external
@@ -324,9 +324,9 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Redeems the given amount of positions held by user.
+     * @dev Redeems the given amount of positions held by user
      * @param _to address The address of user to transfer the collateral redeemed
-     * @param _redeemQuantity uint256 The amount of positions to redeem.
+     * @param _redeemQuantity uint256 The amount of positions to redeem
      */
     function redeemPositions(address _to, uint256 _redeemQuantity) public {
         IToken(longPositionToken).burn(msg.sender, _redeemQuantity);
