@@ -27,4 +27,5 @@ module.exports = {
     },
   },
   plugins: ['solidity-coverage'],
+  mocha: { timeout: 200000 },
 };
