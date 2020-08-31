@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "test": "npx truffle test",
+    "test": "npx mocha --exit --recursive test --timeout 12000",
     "compile": "npx truffle compile",
     "coverage": "npx truffle run coverage"
   },

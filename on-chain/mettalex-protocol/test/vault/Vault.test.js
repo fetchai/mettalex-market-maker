@@ -1,10 +1,12 @@
 const { expect } = require("chai");
+const { accounts, contract } = require("@openzeppelin/test-environment");
 const { BN, expectEvent, expectRevert } = require("@openzeppelin/test-helpers");
 
-const Vault = artifacts.require("Vault");
-const CTK = artifacts.require("TetherToken");
-const PTK = artifacts.require("PositionToken");
+const Vault = contract.fromArtifact("Vault");
+const CTK = contract.fromArtifact("TetherToken");
+const PTK = contract.fromArtifact("PositionToken");
 
+const [owner, oracle, amm, user, payee, newOracle, newAMM, other] = accounts;
 const nullAddress = "0x0000000000000000000000000000000000000000";
 const initVersion = "1";
 const ctkDecimals = 6;
@@ -16,9 +18,7 @@ const multiplier = 10;
 const feeRate = 300;
 const ctkInitialSupply = 1000000000000;
 
-contract("Vault", (accounts) => {
-  const [owner, oracle, amm, user, payee, newOracle, newAMM, other] = accounts;
-
+describe("Vault", () => {
   beforeEach(async () => {
     this.ctk = await CTK.new(ctkInitialSupply, "Tether", "USDT", ctkDecimals, {
       from: other

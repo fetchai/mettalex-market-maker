@@ -26,6 +26,5 @@ module.exports = {
       network_id: '*',
     },
   },
-  plugins: ['solidity-coverage'],
-  mocha: { timeout: 200000 },
+  plugins: ['solidity-coverage']
 };
