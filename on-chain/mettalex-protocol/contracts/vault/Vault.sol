@@ -27,6 +27,7 @@ contract Vault is Ownable {
     address public longPositionToken;
     address public shortPositionToken;
     address public oracle;
+    //Automated market maker pool controller
     address public ammPoolController;
 
     string public contractName;
@@ -42,6 +43,7 @@ contract Vault is Ownable {
         address indexed _previousOracle,
         address indexed _newOracle
     );
+    //AMM - Automated market maker
     event AMMPoolControllerUpdated(
         address indexed _previousAMMPoolController,
         address indexed _newAMMPoolController
@@ -79,7 +81,8 @@ contract Vault is Ownable {
      * @param _longPosition address The collateral token address
      * @param _shortPosition address The short position token address
      * @param _oracleAddress address The long position token address
-     * @param _ammPoolController address The automated market maker address
+     * @param _ammPoolController address The AMM (Automated market maker) pool
+     * controller address
      * @param _cap uint256 The cap for asset price
      * @param _floor uint256 The floor for asset price
      * @param _multiplier uint256 multiplier corresponding to the value of 1
@@ -191,16 +194,14 @@ contract Vault is Ownable {
 
     /**
      * @dev Changes the address of Automated Market Maker
-     * @param _newAMMPoolController address The address of new automated market maker
+     * @param _newAMMPoolController address The address of new AMM (automated market maker)
+     * pool controller address
      */
     function updateAMMPoolController(address _newAMMPoolController)
         external
         onlyOwner
     {
-        emit AMMPoolControllerUpdated(
-            ammPoolController,
-            _newAMMPoolController
-        );
+        emit AMMPoolControllerUpdated(ammPoolController, _newAMMPoolController);
         ammPoolController = _newAMMPoolController;
     }
 
