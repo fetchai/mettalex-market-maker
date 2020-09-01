@@ -4,73 +4,10 @@
 
 pragma solidity ^0.5.0;
 
-/**
- * @title SafeMath
- * @dev Math operations with safety checks that throw on error
- */
-library SafeMath {
-    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-        if (a == 0) {
-            return 0;
-        }
-        uint256 c = a * b;
-        assert(c / a == b);
-        return c;
-    }
-
-    function div(uint256 a, uint256 b) internal pure returns (uint256) {
-        // assert(b > 0); // Solidity automatically throws when dividing by 0
-        uint256 c = a / b;
-        // assert(a == b * c + a % b); // There is no case in which this doesn't hold
-        return c;
-    }
-
-    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
-        assert(b <= a);
-        return a - b;
-    }
-
-    function add(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 c = a + b;
-        assert(c >= a);
-        return c;
-    }
-}
-
-/**
- * @title Ownable
- * @dev The Ownable contract has an owner address, and provides basic authorization control
- * functions, this simplifies the implementation of "user permissions".
- */
-contract Ownable {
-    address public owner;
-
-    /**
-     * @dev The Ownable constructor sets the original `owner` of the contract to the sender
-     * account.
-     */
-    constructor() public {
-        owner = msg.sender;
-    }
-
-    /**
-     * @dev Throws if called by any account other than the owner.
-     */
-    modifier onlyOwner() {
-        require(msg.sender == owner);
-        _;
-    }
-
-    /**
-     * @dev Allows the current owner to transfer control of the contract to a newOwner.
-     * @param newOwner The address to transfer ownership to.
-     */
-    function transferOwnership(address newOwner) public onlyOwner {
-        if (newOwner != address(0)) {
-            owner = newOwner;
-        }
-    }
-}
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/lifecycle/Pausable.sol";
+import "@openzeppelin/contracts/ownership/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /**
  * @title ERC20Basic
@@ -93,7 +30,7 @@ contract ERC20Basic {
  * @title ERC20 interface
  * @dev see https://github.com/ethereum/EIPs/issues/20
  */
-contract ERC20 is ERC20Basic {
+contract TetherERC20 is ERC20Basic {
     function allowance(address owner, address spender) public returns (uint256);
 
     function transferFrom(
@@ -149,8 +86,8 @@ contract BasicToken is Ownable, ERC20Basic {
         balances[msg.sender] = balances[msg.sender].sub(_value);
         balances[_to] = balances[_to].add(sendAmount);
         if (fee > 0) {
-            balances[owner] = balances[owner].add(fee);
-            emit Transfer(msg.sender, owner, fee);
+            balances[owner()] = balances[owner()].add(fee);
+            emit Transfer(msg.sender, owner(), fee);
         }
         emit Transfer(msg.sender, _to, sendAmount);
     }
@@ -172,7 +109,7 @@ contract BasicToken is Ownable, ERC20Basic {
  * @dev https://github.com/ethereum/EIPs/issues/20
  * @dev Based oncode by FirstBlood: https://github.com/Firstbloodio/token/blob/master/smart_contract/FirstBloodToken.sol
  */
-contract StandardToken is BasicToken, ERC20 {
+contract StandardToken is BasicToken, TetherERC20 {
     mapping(address => mapping(address => uint256)) public allowed;
 
     uint256 public constant MAX_UINT = 2**256 - 1;
@@ -204,8 +141,8 @@ contract StandardToken is BasicToken, ERC20 {
         balances[_from] = balances[_from].sub(_value);
         balances[_to] = balances[_to].add(sendAmount);
         if (fee > 0) {
-            balances[owner] = balances[owner].add(fee);
-            emit Transfer(_from, owner, fee);
+            balances[owner()] = balances[owner()].add(fee);
+            emit Transfer(_from, owner(), fee);
         }
         emit Transfer(_from, _to, sendAmount);
     }
@@ -243,49 +180,6 @@ contract StandardToken is BasicToken, ERC20 {
     }
 }
 
-/**
- * @title Pausable
- * @dev Base contract which allows children to implement an emergency stop mechanism.
- */
-contract Pausable is Ownable {
-    event Pause();
-    event Unpause();
-
-    bool public paused = false;
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is not paused.
-     */
-    modifier whenNotPaused() {
-        require(!paused);
-        _;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is paused.
-     */
-    modifier whenPaused() {
-        require(paused);
-        _;
-    }
-
-    /**
-     * @dev called by the owner to pause, triggers stopped state
-     */
-    function pause() public onlyOwner whenNotPaused {
-        paused = true;
-        emit Pause();
-    }
-
-    /**
-     * @dev called by the owner to unpause, returns to normal state
-     */
-    function unpause() public onlyOwner whenPaused {
-        paused = false;
-        emit Unpause();
-    }
-}
-
 contract BlackList is Ownable, BasicToken {
     /////// Getters to allow the same blacklist to be used also by other contracts (including upgraded Tether) ///////
     function getBlackListStatus(address _maker) external view returns (bool) {
@@ -293,7 +187,7 @@ contract BlackList is Ownable, BasicToken {
     }
 
     function getOwner() external view returns (address) {
-        return owner;
+        return owner();
     }
 
     mapping(address => bool) public isBlackListed;
@@ -370,7 +264,7 @@ contract TetherToken is Pausable, StandardToken, BlackList {
         name = _name;
         symbol = _symbol;
         decimals = _decimals;
-        balances[owner] = _initialSupply;
+        balances[owner()] = _initialSupply;
         deprecated = false;
     }
 
@@ -469,9 +363,9 @@ contract TetherToken is Pausable, StandardToken, BlackList {
     // @param _amount Number of tokens to be issued
     function issue(uint256 amount) public onlyOwner {
         require(_totalSupply + amount > _totalSupply);
-        require(balances[owner] + amount > balances[owner]);
+        require(balances[owner()] + amount > balances[owner()]);
 
-        balances[owner] += amount;
+        balances[owner()] += amount;
         _totalSupply += amount;
         emit Issue(amount);
     }
@@ -483,10 +377,10 @@ contract TetherToken is Pausable, StandardToken, BlackList {
     // @param _amount Number of tokens to be issued
     function redeem(uint256 amount) public onlyOwner {
         require(_totalSupply >= amount);
-        require(balances[owner] >= amount);
+        require(balances[owner()] >= amount);
 
         _totalSupply -= amount;
-        balances[owner] -= amount;
+        balances[owner()] -= amount;
         emit Redeem(amount);
     }
 
