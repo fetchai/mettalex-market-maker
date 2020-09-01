@@ -27,7 +27,7 @@ contract Vault is Ownable {
     address public longPositionToken;
     address public shortPositionToken;
     address public oracle;
-    address public automatedMarketMaker;
+    address public ammPoolController;
 
     string public contractName;
     bool public isSettled = false;
@@ -42,9 +42,9 @@ contract Vault is Ownable {
         address indexed _previousOracle,
         address indexed _newOracle
     );
-    event AutomatedMarketMakerUpdated(
-        address indexed _previousAMM,
-        address indexed _newAMM
+    event AMMPoolControllerUpdated(
+        address indexed _previousAMMPoolController,
+        address indexed _newAMMPoolController
     );
     event PositionsRedeemed(
         address indexed _to,
@@ -79,7 +79,7 @@ contract Vault is Ownable {
      * @param _longPosition address The collateral token address
      * @param _shortPosition address The short position token address
      * @param _oracleAddress address The long position token address
-     * @param _automatedMarketMaker address The automated market maker address
+     * @param _ammPoolController address The automated market maker address
      * @param _cap uint256 The cap for asset price
      * @param _floor uint256 The floor for asset price
      * @param _multiplier uint256 multiplier corresponding to the value of 1
@@ -93,7 +93,7 @@ contract Vault is Ownable {
         address _longPosition,
         address _shortPosition,
         address _oracleAddress,
-        address _automatedMarketMaker,
+        address _ammPoolController,
         uint256 _cap,
         uint256 _floor,
         uint256 _multiplier,
@@ -105,7 +105,7 @@ contract Vault is Ownable {
         longPositionToken = _longPosition;
         shortPositionToken = _shortPosition;
         oracle = _oracleAddress;
-        automatedMarketMaker = _automatedMarketMaker;
+        ammPoolController = _ammPoolController;
 
         priceCap = _cap;
         priceFloor = _floor;
@@ -191,11 +191,17 @@ contract Vault is Ownable {
 
     /**
      * @dev Changes the address of Automated Market Maker
-     * @param _newAMM address The address of new automated market maker
+     * @param _newAMMPoolController address The address of new automated market maker
      */
-    function updateAutomatedMarketMaker(address _newAMM) external onlyOwner {
-        emit AutomatedMarketMakerUpdated(automatedMarketMaker, _newAMM);
-        automatedMarketMaker = _newAMM;
+    function updateAMMPoolController(address _newAMMPoolController)
+        external
+        onlyOwner
+    {
+        emit AMMPoolControllerUpdated(
+            ammPoolController,
+            _newAMMPoolController
+        );
+        ammPoolController = _newAMMPoolController;
     }
 
     /**
@@ -341,7 +347,7 @@ contract Vault is Ownable {
     }
 
     function _calculateFee(uint256 _quantityToMint) internal returns (uint256) {
-        if (msg.sender == automatedMarketMaker) return 0;
+        if (msg.sender == ammPoolController) return 0;
 
         uint256 collateralFee = collateralFeePerUnit.mul(_quantityToMint);
         feeAccumulated = feeAccumulated.add(collateralFee);
@@ -352,7 +358,7 @@ contract Vault is Ownable {
         internal
         returns (uint256, uint256)
     {
-        if (msg.sender == automatedMarketMaker) {
+        if (msg.sender == ammPoolController) {
             uint256 quantityToMint = _collateralAmount.div(collateralPerUnit);
             return (0, quantityToMint);
         }

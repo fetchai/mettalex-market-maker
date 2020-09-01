@@ -129,7 +129,7 @@ describe("Vault", () => {
     });
 
     it("should check automated market maker", async () => {
-      expect((await this.vault.automatedMarketMaker()).toString()).to.equal(
+      expect((await this.vault.ammPoolController()).toString()).to.equal(
         amm
       );
     });
@@ -689,24 +689,24 @@ describe("Vault", () => {
     });
   });
 
-  describe("Update automated market maker", () => {
+  describe("Update AMM pool controller ", () => {
     it("should reject if not called by owner", async () => {
       await expectRevert(
-        this.vault.updateAutomatedMarketMaker(newAMM, { from: other }),
+        this.vault.updateAMMPoolController(newAMM, { from: other }),
         "Ownable: caller is not the owner"
       );
     });
 
     it("should be able to update oracle", async () => {
-      const receipt = await this.vault.updateAutomatedMarketMaker(newAMM, {
+      const receipt = await this.vault.updateAMMPoolController(newAMM, {
         from: owner
       });
 
-      expectEvent(receipt, "AutomatedMarketMakerUpdated", {
-        _previousAMM: amm,
-        _newAMM: newAMM
+      expectEvent(receipt, "AMMPoolControllerUpdated", {
+        _previousAMMPoolController: amm,
+        _newAMMPoolController: newAMM
       });
-      expect((await this.vault.automatedMarketMaker()).toString()).to.equal(
+      expect((await this.vault.ammPoolController()).toString()).to.equal(
         newAMM
       );
     });
