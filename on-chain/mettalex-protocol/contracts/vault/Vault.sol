@@ -1,33 +1,40 @@
 pragma solidity ^0.5.2;
 
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/ownership/Ownable.sol";
 import "../interfaces/IToken.sol";
+import "../libraries/SafeERC20.sol";
+import "@openzeppelin/contracts/ownership/Ownable.sol";
 
+/**
+ * @title Vault
+ */
 contract Vault is Ownable {
     using SafeMath for uint256;
+    using SafeERC20 for IToken;
 
-    string public contractName;
     uint256 public version;
     uint256 public feeAccumulated;
     uint256 public priceSpot;
     uint256 public priceCap;
     uint256 public priceFloor;
-    uint256 public qtyMultiplier; // multiplier corresponding to the value of 1 increment in price to token base units
-    uint256 public collateralPerUnit; // required collateral amount for the full range of outcome tokens
-    uint256 public collateralFeePerUnit;
-    uint256 private collateralWithFeePerUnit;
+    uint256 public qtyMultiplier;
 
-    uint8 private constant MAX_SETTLEMENT_LENGTH = 120;
+    // required collateral amount for the full range of outcome tokens
+    uint256 public collateralPerUnit;
+    uint256 public collateralFeePerUnit;
     uint256 public settlementPrice;
     uint256 public settlementTimeStamp;
-    bool public isSettled = false;
-
     address public collateralToken;
     address public longPositionToken;
     address public shortPositionToken;
     address public oracle;
-    address public automatedMarketMaker;
+    //Automated market maker pool controller
+    address public ammPoolController;
+
+    string public contractName;
+    bool public isSettled = false;
+
+    uint8 private constant MAX_SETTLEMENT_LENGTH = 120;
+    uint256 private collateralWithFeePerUnit;
 
     event UpdatedLastPrice(uint256 _price);
     event ContractSettled(uint256 indexed _settlePrice);
@@ -36,9 +43,10 @@ contract Vault is Ownable {
         address indexed _previousOracle,
         address indexed _newOracle
     );
-    event AutomatedMarketMakerUpdated(
-        address indexed _previousAMM,
-        address indexed _newAMM
+    //AMM - Automated market maker
+    event AMMPoolControllerUpdated(
+        address indexed _previousAMMPoolController,
+        address indexed _newAMMPoolController
     );
     event PositionsRedeemed(
         address indexed _to,
@@ -65,6 +73,22 @@ contract Vault is Ownable {
         uint256 _totalCollateralReturned
     );
 
+    /**
+     * @dev The Vault constructor sets initial values
+     * @param _name string The name of the Vault
+     * @param _version uint256 The version of the Vault
+     * @param _collateralToken address The address of the collateral token
+     * @param _longPosition address The collateral token address
+     * @param _shortPosition address The short position token address
+     * @param _oracleAddress address The long position token address
+     * @param _ammPoolController address The AMM (Automated market maker) pool
+     * controller address
+     * @param _cap uint256 The cap for asset price
+     * @param _floor uint256 The floor for asset price
+     * @param _multiplier uint256 multiplier corresponding to the value of 1
+     * increment in price to token base units
+     * @param _feeRate uint256 The fee rate for locking collateral
+     */
     constructor(
         string memory _name,
         uint256 _version,
@@ -72,7 +96,7 @@ contract Vault is Ownable {
         address _longPosition,
         address _shortPosition,
         address _oracleAddress,
-        address _automatedMarketMaker,
+        address _ammPoolController,
         uint256 _cap,
         uint256 _floor,
         uint256 _multiplier,
@@ -84,7 +108,7 @@ contract Vault is Ownable {
         longPositionToken = _longPosition;
         shortPositionToken = _shortPosition;
         oracle = _oracleAddress;
-        automatedMarketMaker = _automatedMarketMaker;
+        ammPoolController = _ammPoolController;
 
         priceCap = _cap;
         priceFloor = _floor;
@@ -98,21 +122,33 @@ contract Vault is Ownable {
         collateralWithFeePerUnit = collateralPerUnit.add(collateralFeePerUnit);
     }
 
+    /**
+     * @dev Throws if called by any account other than Oracle
+     */
     modifier onlyOracle {
         require(msg.sender == oracle, "ORACLE_ONLY");
         _;
     }
 
+    /**
+     * @dev Throws if contract is settled
+     */
     modifier notSettled {
         require(!isSettled, "Contract is already settled");
         _;
     }
 
+    /**
+     * @dev Throws if contract is not settled
+     */
     modifier settled {
         require(isSettled, "Contract should be settled");
         _;
     }
 
+    /**
+     * @dev Throws if more than max-allowed number of addresses passed to settle
+     */
     modifier withinMaxLength(uint8 settlerLength) {
         require(
             settlerLength <= MAX_SETTLEMENT_LENGTH,
@@ -121,30 +157,70 @@ contract Vault is Ownable {
         _;
     }
 
-    function _calculateFee(uint256 _quantityToMint) internal returns (uint256) {
-        if (msg.sender == automatedMarketMaker) return 0;
+    /**
+     * @dev Used to claim fee accumulated by the vault
+     * @param _to address The address to transfer the fee
+     */
+    function claimFee(address _to) external onlyOwner {
+        uint256 claimedCollateral = feeAccumulated;
+        feeAccumulated = 0;
 
-        uint256 collateralFee = collateralFeePerUnit.mul(_quantityToMint);
-        feeAccumulated = feeAccumulated.add(collateralFee);
-        return collateralFee;
+        IToken(collateralToken).safeTransfer(_to, claimedCollateral);
+        emit FeeClaimed(_to, claimedCollateral);
     }
 
+    /**
+     * @dev Changes the spot price of an asset
+     * @param _price uint256 The updated price
+     */
+    function updateSpot(uint256 _price) external onlyOracle notSettled {
+        // update spot if arbitration price is within contract bounds else settlecontract
+        if (_price >= priceFloor && _price <= priceCap) {
+            priceSpot = _price;
+            emit UpdatedLastPrice(_price);
+        } else {
+            _settleContract(_price);
+        }
+    }
+
+    /**
+     * @dev Changes the address of Oracle contract
+     * @param _newOracle address The address of new oracle contract
+     */
+    function updateOracle(address _newOracle) external onlyOwner {
+        emit OracleUpdated(oracle, _newOracle);
+        oracle = _newOracle;
+    }
+
+    /**
+     * @dev Changes the address of Automated Market Maker
+     * @param _newAMMPoolController address The address of new AMM (automated market maker)
+     * pool controller address
+     */
+    function updateAMMPoolController(address _newAMMPoolController)
+        external
+        onlyOwner
+    {
+        emit AMMPoolControllerUpdated(ammPoolController, _newAMMPoolController);
+        ammPoolController = _newAMMPoolController;
+    }
+
+    /**
+     * @dev Mints the Long and Short position tokens
+     * @param _quantityToMint uint256 The amount of positions to be minted
+     */
     function mintPositions(uint256 _quantityToMint) external notSettled {
         uint256 collateralRequired = collateralPerUnit.mul(_quantityToMint);
         uint256 collateralFee = _calculateFee(_quantityToMint);
 
-        IToken collateral = IToken(collateralToken);
-        collateral.transferFrom(
+        IToken(collateralToken).safeTransferFrom(
             msg.sender,
             address(this),
             collateralRequired.add(collateralFee)
         );
 
-        IToken long = IToken(longPositionToken);
-        IToken short = IToken(shortPositionToken);
-
-        long.mint(msg.sender, _quantityToMint);
-        short.mint(msg.sender, _quantityToMint);
+        IToken(longPositionToken).mint(msg.sender, _quantityToMint);
+        IToken(shortPositionToken).mint(msg.sender, _quantityToMint);
         emit PositionsMinted(
             msg.sender,
             _quantityToMint,
@@ -153,11 +229,137 @@ contract Vault is Ownable {
         );
     }
 
+    /**
+     * @dev Mints the Long and Short position tokens based on amount of collateral
+     * @param _collateralAmount uint256 The amount of collateral to be deposited
+     */
+    function mintFromCollateralAmount(uint256 _collateralAmount)
+        external
+        notSettled
+    {
+        (
+            uint256 collateralFee,
+            uint256 quantityToMint
+        ) = _calculateFeeAndPositions(_collateralAmount);
+
+        IToken(collateralToken).safeTransferFrom(
+            msg.sender,
+            address(this),
+            _collateralAmount
+        );
+
+        IToken(longPositionToken).mint(msg.sender, quantityToMint);
+        IToken(shortPositionToken).mint(msg.sender, quantityToMint);
+        emit PositionsMinted(
+            msg.sender,
+            quantityToMint,
+            _collateralAmount.sub(collateralFee),
+            collateralFee
+        );
+    }
+
+    /**
+     * @dev Redeems the given amount of positions held by user
+     * @dev Overloaded method to redeem collateral to sender address
+     * @param _quantityToRedeem uint256 The quantity of position tokens to redeem
+     */
+
+    function redeemPositions(uint256 _quantityToRedeem) external {
+        redeemPositions(msg.sender, _quantityToRedeem);
+    }
+
+    /**
+     * @dev Settles by returning collateral and burning positions
+     */
+    function settlePositions() external settled {
+        (
+            uint256 longBurned,
+            uint256 shortBurned,
+            uint256 collateralReturned
+        ) = _settle(
+            msg.sender,
+            IToken(collateralToken),
+            IToken(longPositionToken),
+            IToken(shortPositionToken)
+        );
+
+        emit PositionSettled(
+            msg.sender,
+            longBurned,
+            shortBurned,
+            collateralReturned
+        );
+    }
+
+    /**
+     * @dev Settles multiple addresses at once
+     * @param _settlers address[] The array of user accounts to settle
+     */
+    function bulkSettlePositions(address[] calldata _settlers)
+        external
+        onlyOwner
+        settled
+        withinMaxLength(uint8(_settlers.length))
+    {
+        uint256 totalLongBurned;
+        uint256 totalShortBurned;
+        uint256 totalCollateralReturned;
+
+        IToken collateral = IToken(collateralToken);
+        IToken long = IToken(longPositionToken);
+        IToken short = IToken(shortPositionToken);
+
+        uint8 index = 0;
+        for (index; index < _settlers.length; index++) {
+            (
+                uint256 longBurned,
+                uint256 shortBurned,
+                uint256 collateralReturned
+            ) = _settle(_settlers[index], collateral, long, short);
+            totalLongBurned += longBurned;
+            totalShortBurned += shortBurned;
+            totalCollateralReturned += collateralReturned;
+        }
+
+        emit PositionSettledInBulk(
+            _settlers,
+            uint8(_settlers.length),
+            totalLongBurned,
+            totalShortBurned,
+            totalCollateralReturned
+        );
+    }
+
+    /**
+     * @dev Redeems the given amount of positions held by user
+     * @param _to address The address of user to transfer the collateral redeemed
+     * @param _redeemQuantity uint256 The amount of positions to redeem
+     */
+    function redeemPositions(address _to, uint256 _redeemQuantity) public {
+        IToken(longPositionToken).burn(msg.sender, _redeemQuantity);
+        IToken(shortPositionToken).burn(msg.sender, _redeemQuantity);
+
+        uint256 collateralReturned = collateralPerUnit.mul(_redeemQuantity);
+        // Destination address may not be the same as sender e.g. send to
+        // exchange wallet receive funds address
+        IToken(collateralToken).safeTransfer(_to, collateralReturned);
+
+        emit PositionsRedeemed(_to, _redeemQuantity, collateralReturned);
+    }
+
+    function _calculateFee(uint256 _quantityToMint) internal returns (uint256) {
+        if (msg.sender == ammPoolController) return 0;
+
+        uint256 collateralFee = collateralFeePerUnit.mul(_quantityToMint);
+        feeAccumulated = feeAccumulated.add(collateralFee);
+        return collateralFee;
+    }
+
     function _calculateFeeAndPositions(uint256 _collateralAmount)
         internal
         returns (uint256, uint256)
     {
-        if (msg.sender == automatedMarketMaker) {
+        if (msg.sender == ammPoolController) {
             uint256 quantityToMint = _collateralAmount.div(collateralPerUnit);
             return (0, quantityToMint);
         }
@@ -169,41 +371,6 @@ contract Vault is Ownable {
         return (collateralFee, quantityToMint);
     }
 
-    function mintFromCollateralAmount(uint256 _collateralAmount)
-        external
-        notSettled
-    {
-        (
-            uint256 collateralFee,
-            uint256 quantityToMint
-        ) = _calculateFeeAndPositions(_collateralAmount);
-
-        IToken collateral = IToken(collateralToken);
-        collateral.transferFrom(msg.sender, address(this), _collateralAmount);
-
-        IToken long = IToken(longPositionToken);
-        IToken short = IToken(shortPositionToken);
-
-        long.mint(msg.sender, quantityToMint);
-        short.mint(msg.sender, quantityToMint);
-        emit PositionsMinted(
-            msg.sender,
-            quantityToMint,
-            _collateralAmount.sub(collateralFee),
-            collateralFee
-        );
-    }
-
-    function updateSpot(uint256 _price) external onlyOracle notSettled {
-        // update spot if arbitration price is within contract bounds else settlecontract
-        if (_price >= priceFloor && _price <= priceCap) {
-            priceSpot = _price;
-            emit UpdatedLastPrice(_price);
-        } else {
-            _settleContract(_price);
-        }
-    }
-
     function _settleContract(uint256 _settlementPrice) private {
         settlementTimeStamp = now;
         isSettled = true;
@@ -211,49 +378,6 @@ contract Vault is Ownable {
         contractName = string(abi.encodePacked(contractName, " (settled)"));
 
         emit ContractSettled(_settlementPrice);
-    }
-
-    function claimFee(address _to) external onlyOwner {
-        IToken collateral = IToken(collateralToken);
-
-        uint256 claimedCollateral = feeAccumulated;
-        feeAccumulated = 0;
-
-        collateral.transfer(_to, claimedCollateral);
-        emit FeeClaimed(_to, claimedCollateral);
-    }
-
-    function updateOracle(address _newOracle) external onlyOwner {
-        emit OracleUpdated(oracle, _newOracle);
-        oracle = _newOracle;
-    }
-
-    function updateAutomatedMarketMaker(address _newAMM) external onlyOwner {
-        emit AutomatedMarketMakerUpdated(automatedMarketMaker, _newAMM);
-        automatedMarketMaker = _newAMM;
-    }
-
-    // Overloaded method to redeem collateral to sender address
-    function redeemPositions(uint256 _quantityToRedeem) external {
-        redeemPositions(msg.sender, _quantityToRedeem);
-    }
-
-    function redeemPositions(
-        address _to, // Destination address for collateral redeemed
-        uint256 _redeemQuantity
-    ) public {
-        IToken long = IToken(longPositionToken);
-        IToken short = IToken(shortPositionToken);
-        long.burn(msg.sender, _redeemQuantity);
-        short.burn(msg.sender, _redeemQuantity);
-
-        IToken collateral = IToken(collateralToken);
-        uint256 collateralReturned = collateralPerUnit.mul(_redeemQuantity);
-        // Destination address may not be the same as sender e.g. send to
-        // exchange wallet receive funds address
-        collateral.transfer(_to, collateralReturned);
-
-        emit PositionsRedeemed(_to, _redeemQuantity, collateralReturned);
     }
 
     function _settle(
@@ -281,62 +405,8 @@ contract Vault is Ownable {
 
         _long.burn(_settler, longBalance);
         _short.burn(_settler, shortBalance);
-        _collateral.transfer(_settler, collateralReturned);
+        _collateral.safeTransfer(_settler, collateralReturned);
 
         return (longBalance, shortBalance, collateralReturned);
-    }
-
-    function settlePositions() external settled {
-        IToken _collateral = IToken(collateralToken);
-        IToken _long = IToken(longPositionToken);
-        IToken _short = IToken(shortPositionToken);
-
-        (
-            uint256 longBurned,
-            uint256 shortBurned,
-            uint256 collateralReturned
-        ) = _settle(msg.sender, _collateral, _long, _short);
-
-        emit PositionSettled(
-            msg.sender,
-            longBurned,
-            shortBurned,
-            collateralReturned
-        );
-    }
-
-    function bulkSettlePositions(address[] calldata _settlers)
-        external
-        onlyOwner
-        settled
-        withinMaxLength(uint8(_settlers.length))
-    {
-        uint256 totalLongBurned = 0;
-        uint256 totalShortBurned = 0;
-        uint256 totalCollateralReturned = 0;
-
-        IToken collateral = IToken(collateralToken);
-        IToken long = IToken(longPositionToken);
-        IToken short = IToken(shortPositionToken);
-
-        uint8 index = 0;
-        for (index; index < _settlers.length; index++) {
-            (
-                uint256 longBurned,
-                uint256 shortBurned,
-                uint256 collateralReturned
-            ) = _settle(_settlers[index], collateral, long, short);
-            totalLongBurned += longBurned;
-            totalShortBurned += shortBurned;
-            totalCollateralReturned += collateralReturned;
-        }
-
-        emit PositionSettledInBulk(
-            _settlers,
-            uint8(_settlers.length),
-            totalLongBurned,
-            totalShortBurned,
-            totalCollateralReturned
-        );
     }
 }
