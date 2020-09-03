@@ -70,7 +70,7 @@ can be used to upgrade the strategy contract for development.
     optional arguments:
       -h, --help            show this help message and exit
       --action ACTION, -a ACTION
-                            Action to perform: deposit, earn, connect_balancer,
+                            Action to perform: deposit, earn, connect_balancer, simulation ( end to end simulation )
                             deploy (default)
       --quantity QTY, -q QTY
                             Quantity of collateral tokens to transfer (scaled)

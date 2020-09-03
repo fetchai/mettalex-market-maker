@@ -221,7 +221,6 @@ def set_strategy(w3, y_controller, tok, strategy):
     tok_name = tok.functions.name().call()
     print(f'{tok_name} strategy changed from {old_strategy} to {new_strategy}')
 
-
 def set_autonomous_market_maker(w3, vault, strategy):
     acct = w3.eth.defaultAccount
     old_amm = vault.functions.automatedMarketMaker().call()
@@ -233,7 +232,6 @@ def set_autonomous_market_maker(w3, vault, strategy):
     vault_name = vault.functions.contractName().call()
     print(f'{vault_name} strategy changed from {old_amm} to {new_amm}')
 
-
 def connect_balancer(w3):
     build_file = Path(__file__).parent / 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
     with open(build_file, 'r') as f:
@@ -243,7 +241,6 @@ def connect_balancer(w3):
     abi = contract_details['abi']
     balancer = w3.eth.contract(abi=abi, address='0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78')
     return balancer
-
 
 def connect_strategy(w3, address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0'):
     build_file = Path(__file__).parent / 'pool-controller' / 'build' / 'contracts' / 'StrategyBalancerMettalex.json'
@@ -255,7 +252,6 @@ def connect_strategy(w3, address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0'):
     strategy = w3.eth.contract(abi=abi, address=address)
     return strategy
 
-
 def set_balancer_controller(w3, balancer, strategy, controller_address=None):
     acct = w3.eth.defaultAccount
     if controller_address is None:
@@ -264,7 +260,6 @@ def set_balancer_controller(w3, balancer, strategy, controller_address=None):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     balancer_controller = balancer.functions.getController().call()
     print(f'Balancer controller {balancer_controller}')
-
 
 def set_price(w3, vault, price):
     acct = w3.eth.defaultAccount
@@ -283,7 +278,6 @@ def set_yvault_controller(w3, y_controller, y_vault_address, token_address):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print('yVault added in yController')
 
-
 def full_setup():
     w3, admin = connect()
     contracts = get_contracts(w3)
@@ -295,7 +289,6 @@ def full_setup():
     set_autonomous_market_maker(w3, vault, strategy)  # Zero fees for AMM
     set_price(w3, vault, 2500000)
     return w3, admin, balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
-
 
 def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=False):
     """Get spot price for tok_out in terms of number of tok_in required to purchase
@@ -328,7 +321,6 @@ def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=Fa
                 - tok_in.functions.decimals().call()
                 - 18)
     return spot_price
-
 
 def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, min_qty_out=None, max_price=None):
     acct = w3.eth.defaultAccount
@@ -367,7 +359,6 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, mi
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     return tx_hash
 
-
 def deposit(w3, y_vault, coin, amount, customAccount = None):
     acct = w3.eth.defaultAccount
     if customAccount:
@@ -382,7 +373,6 @@ def deposit(w3, y_vault, coin, amount, customAccount = None):
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Deposit in YVault. Amount: {amount} coin. Depositer: {acct}')
-
 
 def earn(w3, y_vault):
     acct = w3.eth.defaultAccount
@@ -435,7 +425,7 @@ def simulate_scenario():
         coin, ltk, stk, vault,
         y_controller, y_vault, strategy) = full_setup()
 
-    print('\n############################### System Setup Completed ##############################################\n')       
+    print('\nSystem Setup Completed\n')       
     
     reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
 
@@ -469,6 +459,11 @@ def simulate_scenario():
 
     reporter.print_balances(y_vault.address, 'Y Vault')
     reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
 
     swap_amount_in(w3, balancer, ltk, 500, stk, user2, 100);
     swap_amount_in(w3, balancer, stk, 500, ltk, user3, 100);
@@ -476,12 +471,19 @@ def simulate_scenario():
 
     reporter.print_balances(y_vault.address, 'Y Vault')
     reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
 
-    withdraw(w3, y_vault, 11000)
-    withdraw(w3, y_vault, 11000, user1)
+    withdraw(w3, y_vault, 200000)
+    withdraw(w3, y_vault, 200000, user1)
 
     reporter.print_balances(y_vault.address, 'Y Vault')
     reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
     
 class BalanceReporter(object):
     def __init__(self, w3, coin, ltk, stk, y_vault):
