@@ -330,9 +330,11 @@ def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=Fa
     return spot_price
 
 
-def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, min_qty_out=None, max_price=None):
+def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, min_qty_out=None, max_price=None):
     acct = w3.eth.defaultAccount
-
+    if customAccount:
+        acct = customAccount
+    print(f'User: {acct} making a swap in balancer. Token_in: ${tok_in.functions.symbol().call()} Token_out: ${tok_out.functions.symbol().call()}')
     qty_in_unitless = int(qty_in * 10**(tok_in.functions.decimals().call()))
 
     if qty_in_unitless > tok_in.functions.allowance(acct, balancer.address).call():
@@ -344,12 +346,13 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, min_qty_out=None, max_
     if min_qty_out is None:
         # Default to allowing 10% slippage
         spot_price = get_spot_price(w3, balancer, tok_in, tok_out, unitless=False)
+        print('spot price is', spot_price)
         min_qty_out = qty_in / spot_price * 0.9
         print(f'Minimum output token quantity not specified: using {min_qty_out}')
 
     if max_price is None:
         spot_price_unitless = get_spot_price(w3, balancer, tok_in, tok_out, unitless=True)
-        max_price = int(spot_price_unitless * 1/0.9)
+        max_price = int(spot_price_unitless * 1/0.09)
         print(f'Max price not specified: using {max_price}')
 
     min_qty_out_unitless = int(min_qty_out * 10**(tok_out.functions.decimals().call()))
@@ -365,8 +368,10 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, min_qty_out=None, max_
     return tx_hash
 
 
-def deposit(w3, y_vault, coin, amount):
+def deposit(w3, y_vault, coin, amount, customAccount = None):
     acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
     amount_unitless = int(amount * 10**(coin.functions.decimals().call()))
     tx_hash = coin.functions.approve(y_vault.address, amount_unitless).transact(
         {'from': acct, 'gas': 1_000_000}
@@ -376,6 +381,7 @@ def deposit(w3, y_vault, coin, amount):
         {'from': acct, 'gas': 1_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(f'Deposit in YVault. Amount: {amount} coin. Depositer: {acct}')
 
 
 def earn(w3, y_vault):
@@ -384,15 +390,98 @@ def earn(w3, y_vault):
         {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(f'Liquidity supplied to AMM balancer. Earn Function Caller: {acct}')
 
-
-def withdraw(w3, y_vault, amount):
+def withdraw(w3, y_vault, amount, customAccount=None):
     acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
     amount_unitless = amount * 10**(y_vault.functions.decimals().call())
     tx_hash = y_vault.functions.withdraw(amount_unitless).transact(
         {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(f'Withdraw from YVault. Amount: {amount} shares. Withdrawer: {acct}')
+
+def distribute_coin(w3, coin, amount=200000, customAccount=None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount;
+    transfer_amount = amount * 10**(coin.functions.decimals().call())
+    tx_hash = coin.functions.transfer(acct, transfer_amount).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(f'Coin distribution successful. From = {w3.eth.defaultAccount} To = {acct} Amount = {amount}')
+
+def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount = None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount;
+    collateralAmount_unitless =  collateralAmount * 10**(coin.functions.decimals().call())
+    tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
+        {'from': customAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    
+    tx_hash = vault.functions.mintFromCollateralAmount(collateralAmount_unitless).transact(
+        {'from': customAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(f'Position tokens minted. Locked Coin: {collateralAmount} Minter: {acct}')   
+    
+def simulate_scenario():
+    (w3, admin, balancer_factory, balancer,
+        coin, ltk, stk, vault,
+        y_controller, y_vault, strategy) = full_setup()
+
+    print('\n############################### System Setup Completed ##############################################\n')       
+    
+    reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
+
+    # accounts[0] or default account hols all the tokens.
+    user1 = w3.eth.accounts[1]
+    user2 = w3.eth.accounts[2]
+    user3 = w3.eth.accounts[3]
+    user4 = w3.eth.accounts[4]
+
+    distribute_coin(w3, coin, 200000, user1)
+    distribute_coin(w3, coin, 200000, user2)
+    distribute_coin(w3, coin, 200000, user3)
+    distribute_coin(w3, coin, 200000, user4)
+
+    mintPositionTokens(w3, vault, coin, 100000, user2)
+    mintPositionTokens(w3, vault, coin, 100000, user3)
+    mintPositionTokens(w3, vault, coin, 100000, user4)
+
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
+
+    deposit(w3, y_vault, coin, 200000, user1)
+    deposit(w3, y_vault, coin, 100000, user2)
+    deposit(w3, y_vault, coin, 100000, user3)
+    deposit(w3, y_vault, coin, 100000, user4)
+    deposit(w3, y_vault, coin, 200000)
+    earn(w3, y_vault)
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+
+    swap_amount_in(w3, balancer, ltk, 500, stk, user2, 100);
+    swap_amount_in(w3, balancer, stk, 500, ltk, user3, 100);
+    swap_amount_in(w3, balancer, ltk, 500, stk, user4, 100);
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+
+    withdraw(w3, y_vault, 11000)
+    withdraw(w3, y_vault, 11000, user1)
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
     
 class BalanceReporter(object):
     def __init__(self, w3, coin, ltk, stk, y_vault):
@@ -415,8 +504,8 @@ class BalanceReporter(object):
 
     def print_balances(self, address, name):
         coin_balance, ltk_balance, stk_balance, y_vault_balance = self.get_balances(address)
-        print(f'{name} ({address}) has {y_vault_balance/10**18:0.2f} vault shares')
-        print(f'  {coin_balance/10**18:0.2f} coin, {ltk_balance/10**6:0.2f} LTK, {stk_balance/10**6:0.2f} STK')
+        print(f'\n{name} ({address}) has {y_vault_balance/10**18:0.2f} vault shares')
+        print(f'  {coin_balance/10**18:0.2f} coin, {ltk_balance/10**6:0.2f} LTK, {stk_balance/10**6:0.2f} STK\n')
 
 
 class Balancer(object):
@@ -460,7 +549,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
     parser.add_argument(
         '--action', '-a', dest='action', default='deploy',
-        help='Action to perform: deposit, earn, connect_balancer, upgrade, deploy (default)'
+        help='Action to perform: deposit, earn, connect_balancer, upgrade, simulation ( end to end simulation ), deploy (default)'
     )
     parser.add_argument(
         '--quantity', '-q', dest='qty', default=0,
@@ -468,14 +557,16 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
+    if args.action == 'simulation':
+        simulate_scenario()
     if args.action == 'deploy':
         (w3, admin, balancer_factory, balancer,
          coin, ltk, stk, vault,
          y_controller, y_vault, strategy) = full_setup()
-    elif args.action == 'connect_balancer':
-        w3, admin = connect()
-        balancer = connect_balancer(w3)
-        set_balancer_controller(w3, balancer, controller_address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0')
+    # elif args.action == 'connect_balancer':
+    #     w3, admin = connect()
+    #     balancer = connect_balancer(w3)
+    #     set_balancer_controller(w3, balancer, controller_address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0')
 
     else:
         w3, contracts = connect_deployed()
