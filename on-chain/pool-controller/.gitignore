@@ -7,3 +7,5 @@ yarn-error.log
 crytic-export
 mcore_*
 .openzeppelin/.session
+contract_cache.json
+.openzeppelin/dev-*

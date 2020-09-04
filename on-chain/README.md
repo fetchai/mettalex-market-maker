@@ -70,7 +70,7 @@ can be used to upgrade the strategy contract for development.
     optional arguments:
       -h, --help            show this help message and exit
       --action ACTION, -a ACTION
-                            Action to perform: deposit, earn, connect_balancer,
+                            Action to perform: deposit, earn, connect_balancer, simulation ( end to end simulation )
                             deploy (default)
       --quantity QTY, -q QTY
                             Quantity of collateral tokens to transfer (scaled)
@@ -94,15 +94,17 @@ Or from within IPython console
     import sys
     os.chdir('price-leveraged-token/market-maker/on-chain')
     sys.path.append(os.getcwd())
-    from setup_contracts import full_setup, deposit, earn, BalanceReporter, upgrade_strategy, set_price, get_spot_price, swap_amount_in, connect_deployed, withdraw
+    from setup_contracts import full_setup, deposit, earn, BalanceReporter, upgrade_strategy, set_price, get_spot_price, swap_amount_in, connect_deployed, withdraw, bind_pool
     
     w3, contracts = connect_deployed()
     y_vault = contracts['YVault']
     coin = contracts['Coin']
     ltk = contracts['Long']
     stk = contracts['Short']
-    reporter = BalanceReporter(w3, coin, ltk, stk)
+    reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
     balancer = contracts['BPool']
+    strategy = contracts['PoolController']
+    y_controller = contracts['YController']
     deposit(w3, y_vault, coin, 200000)
     earn(w3, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
