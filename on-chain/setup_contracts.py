@@ -69,8 +69,8 @@ def deploy_contract(w3, contract, *args):
     tx_hash = contract.constructor(*args).transact()
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     deployed_contract = w3.eth.contract(
-         address=tx_receipt.contractAddress,
-         abi=contract.abi
+        address=tx_receipt.contractAddress,
+        abi=contract.abi
     )
     return deployed_contract
 
@@ -84,8 +84,8 @@ def connect_contract(w3, contract, address):
     :return:
     """
     deployed_contract = w3.eth.contract(
-         address=address,
-         abi=contract.abi
+        address=address,
+        abi=contract.abi
     )
     return deployed_contract
 
@@ -112,7 +112,7 @@ def deploy_upgradeable_strategy(w3, y_controller, *args):
     acct = w3.eth.defaultAccount
     result = subprocess.run(
         ['npx', 'oz', 'deploy', '-n', 'development', '-k', 'upgradeable', '-f', acct,
-         'StrategyBalancerMettalex',  y_controller.address] + [arg.address for arg in args],
+         'StrategyBalancerMettalex', y_controller.address] + [arg.address for arg in args],
         capture_output=True
     )
     strategy_address = result.stdout.strip().decode('utf-8')
@@ -221,6 +221,7 @@ def set_strategy(w3, y_controller, tok, strategy):
     tok_name = tok.functions.name().call()
     print(f'{tok_name} strategy changed from {old_strategy} to {new_strategy}')
 
+
 def set_autonomous_market_maker(w3, vault, strategy):
     acct = w3.eth.defaultAccount
     old_amm = vault.functions.automatedMarketMaker().call()
@@ -232,6 +233,7 @@ def set_autonomous_market_maker(w3, vault, strategy):
     vault_name = vault.functions.contractName().call()
     print(f'{vault_name} strategy changed from {old_amm} to {new_amm}')
 
+
 def connect_balancer(w3):
     build_file = Path(__file__).parent / 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
     with open(build_file, 'r') as f:
@@ -241,6 +243,7 @@ def connect_balancer(w3):
     abi = contract_details['abi']
     balancer = w3.eth.contract(abi=abi, address='0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78')
     return balancer
+
 
 def connect_strategy(w3, address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0'):
     build_file = Path(__file__).parent / 'pool-controller' / 'build' / 'contracts' / 'StrategyBalancerMettalex.json'
@@ -252,14 +255,16 @@ def connect_strategy(w3, address='0x9b1f7F645351AF3631a656421eD2e40f2802E6c0'):
     strategy = w3.eth.contract(abi=abi, address=address)
     return strategy
 
+
 def set_balancer_controller(w3, balancer, strategy, controller_address=None):
     acct = w3.eth.defaultAccount
     if controller_address is None:
         controller_address = strategy.address
-    tx_hash = balancer.functions.setController(controller_address).transact({'from':acct, 'gas': 1_000_000})
+    tx_hash = balancer.functions.setController(controller_address).transact({'from': acct, 'gas': 1_000_000})
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     balancer_controller = balancer.functions.getController().call()
     print(f'Balancer controller {balancer_controller}')
+
 
 def set_price(w3, vault, price):
     acct = w3.eth.defaultAccount
@@ -272,11 +277,13 @@ def set_price(w3, vault, price):
     vault_name = vault.functions.contractName().call()
     print(f'{vault_name} spot changed from {old_spot} to {new_spot}')
 
+
 def set_yvault_controller(w3, y_controller, y_vault_address, token_address):
     acct = w3.eth.defaultAccount
-    tx_hash = y_controller.functions.setVault(token_address, y_vault_address).transact({'from':acct, 'gas': 1_000_000})
+    tx_hash = y_controller.functions.setVault(token_address, y_vault_address).transact({'from': acct, 'gas': 1_000_000})
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print('yVault added in yController')
+
 
 def full_setup():
     w3, admin = connect()
@@ -289,6 +296,7 @@ def full_setup():
     set_autonomous_market_maker(w3, vault, strategy)  # Zero fees for AMM
     set_price(w3, vault, 2500000)
     return w3, admin, balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
+
 
 def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=False):
     """Get spot price for tok_out in terms of number of tok_in required to purchase
@@ -316,18 +324,20 @@ def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=Fa
         ).call()
     if not unitless:
         # Take decimals into account
-        spot_price = spot_price * 10**(
+        spot_price = spot_price * 10 ** (
                 tok_out.functions.decimals().call()
                 - tok_in.functions.decimals().call()
                 - 18)
     return spot_price
 
+
 def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, min_qty_out=None, max_price=None):
     acct = w3.eth.defaultAccount
     if customAccount:
         acct = customAccount
-    print(f'User: {acct} making a swap in balancer. Token_in: ${tok_in.functions.symbol().call()} Token_out: ${tok_out.functions.symbol().call()}')
-    qty_in_unitless = int(qty_in * 10**(tok_in.functions.decimals().call()))
+    print(
+        f'User: {acct} making a swap in balancer. Token_in: ${tok_in.functions.symbol().call()} Token_out: ${tok_out.functions.symbol().call()}')
+    qty_in_unitless = int(qty_in * 10 ** (tok_in.functions.decimals().call()))
 
     if qty_in_unitless > tok_in.functions.allowance(acct, balancer.address).call():
         tx_hash = tok_in.functions.approve(balancer.address, qty_in_unitless).transact(
@@ -344,10 +354,10 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, mi
 
     if max_price is None:
         spot_price_unitless = get_spot_price(w3, balancer, tok_in, tok_out, unitless=True)
-        max_price = int(spot_price_unitless * 1/0.09)
+        max_price = int(spot_price_unitless * 1 / 0.09)
         print(f'Max price not specified: using {max_price}')
 
-    min_qty_out_unitless = int(min_qty_out * 10**(tok_out.functions.decimals().call()))
+    min_qty_out_unitless = int(min_qty_out * 10 ** (tok_out.functions.decimals().call()))
 
     tx_hash = balancer.functions.swapExactAmountIn(
         tok_in.address, qty_in_unitless,
@@ -359,11 +369,12 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, mi
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     return tx_hash
 
-def deposit(w3, y_vault, coin, amount, customAccount = None):
+
+def deposit(w3, y_vault, coin, amount, customAccount=None):
     acct = w3.eth.defaultAccount
     if customAccount:
         acct = customAccount
-    amount_unitless = int(amount * 10**(coin.functions.decimals().call()))
+    amount_unitless = int(amount * 10 ** (coin.functions.decimals().call()))
     tx_hash = coin.functions.approve(y_vault.address, amount_unitless).transact(
         {'from': acct, 'gas': 1_000_000}
     )
@@ -374,6 +385,7 @@ def deposit(w3, y_vault, coin, amount, customAccount = None):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Deposit in YVault. Amount: {amount} coin. Depositer: {acct}')
 
+
 def earn(w3, y_vault):
     acct = w3.eth.defaultAccount
     tx_hash = y_vault.functions.earn().transact(
@@ -382,51 +394,55 @@ def earn(w3, y_vault):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Liquidity supplied to AMM balancer. Earn Function Caller: {acct}')
 
+
 def withdraw(w3, y_vault, amount, customAccount=None):
     acct = w3.eth.defaultAccount
     if customAccount:
         acct = customAccount
-    amount_unitless = amount * 10**(y_vault.functions.decimals().call())
+    amount_unitless = amount * 10 ** (y_vault.functions.decimals().call())
     tx_hash = y_vault.functions.withdraw(amount_unitless).transact(
         {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Withdraw from YVault. Amount: {amount} shares. Withdrawer: {acct}')
 
+
 def distribute_coin(w3, coin, amount=200000, customAccount=None):
     acct = w3.eth.defaultAccount
     if customAccount:
         acct = customAccount;
-    transfer_amount = amount * 10**(coin.functions.decimals().call())
+    transfer_amount = amount * 10 ** (coin.functions.decimals().call())
     tx_hash = coin.functions.transfer(acct, transfer_amount).transact(
         {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Coin distribution successful. From = {w3.eth.defaultAccount} To = {acct} Amount = {amount}')
 
-def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount = None):
+
+def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=None):
     acct = w3.eth.defaultAccount
     if customAccount:
         acct = customAccount;
-    collateralAmount_unitless =  collateralAmount * 10**(coin.functions.decimals().call())
+    collateralAmount_unitless = collateralAmount * 10 ** (coin.functions.decimals().call())
     tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
         {'from': customAccount, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-    
+
     tx_hash = vault.functions.mintFromCollateralAmount(collateralAmount_unitless).transact(
         {'from': customAccount, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-    print(f'Position tokens minted. Locked Coin: {collateralAmount} Minter: {acct}')   
-    
+    print(f'Position tokens minted. Locked Coin: {collateralAmount} Minter: {acct}')
+
+
 def simulate_scenario():
     (w3, admin, balancer_factory, balancer,
-        coin, ltk, stk, vault,
-        y_controller, y_vault, strategy) = full_setup()
+     coin, ltk, stk, vault,
+     y_controller, y_vault, strategy) = full_setup()
 
-    print('\nSystem Setup Completed\n')       
-    
+    print('\nSystem Setup Completed\n')
+
     reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
 
     # accounts[0] or default account hols all the tokens.
@@ -484,7 +500,8 @@ def simulate_scenario():
     reporter.print_balances(balancer.address, 'Balancer AMM')
     reporter.print_balances(w3.eth.defaultAccount, 'User 0')
     reporter.print_balances(user1, 'User 1')
-    
+
+
 class BalanceReporter(object):
     def __init__(self, w3, coin, ltk, stk, y_vault):
         self.w3 = w3
@@ -492,10 +509,10 @@ class BalanceReporter(object):
         self.ltk = ltk
         self.stk = stk
         self.y_vault = y_vault
-        self.coin_scale = 10**18
-        self.ltk_scale = 10**6
-        self.stk_scale = 10**6
-        self.y_vault_scale = 10**18
+        self.coin_scale = 10 ** 18
+        self.ltk_scale = 10 ** 6
+        self.stk_scale = 10 ** 6
+        self.y_vault_scale = 10 ** 18
 
     def get_balances(self, address):
         coin_balance = self.coin.functions.balanceOf(address).call()
@@ -506,8 +523,9 @@ class BalanceReporter(object):
 
     def print_balances(self, address, name):
         coin_balance, ltk_balance, stk_balance, y_vault_balance = self.get_balances(address)
-        print(f'\n{name} ({address}) has {y_vault_balance/10**18:0.2f} vault shares')
-        print(f'  {coin_balance/10**18:0.2f} coin, {ltk_balance/10**6:0.2f} LTK, {stk_balance/10**6:0.2f} STK\n')
+        print(f'\n{name} ({address}) has {y_vault_balance / 10 ** 18:0.2f} vault shares')
+        print(
+            f'  {coin_balance / 10 ** 18:0.2f} coin, {ltk_balance / 10 ** 6:0.2f} LTK, {stk_balance / 10 ** 6:0.2f} STK\n')
 
 
 class Balancer(object):
@@ -531,7 +549,7 @@ class System(object):
         self.coin = None
         self.ltk = None
         self.stk = None
-        self.vault =None
+        self.vault = None
         self.y_controller = None
         self.y_vault = None
         self.strategy = None
@@ -541,7 +559,7 @@ class System(object):
             self.w3, self.admin, self.balancer_factory, self.balancer,
             self.coin, self.ltk, self.stk, self.vault, self.y_controller,
             self.y_vault, self.strategy
-         ) = full_setup()
+        ) = full_setup()
 
     def get_balancer(self):
         return Balancer(self.w3, self.balancer)
@@ -577,9 +595,9 @@ if __name__ == '__main__':
             y_controller, y_vault, strategy
         ) = (
             contracts[name] for name in [
-                'BFactory', 'BPool', 'Coin', 'Long', 'Short', 'Vault',
-                'YController', 'YVault', 'PoolController'
-            ]
+            'BFactory', 'BPool', 'Coin', 'Long', 'Short', 'Vault',
+            'YController', 'YVault', 'PoolController'
+        ]
         )
         reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
         if args.action == 'deposit':
@@ -605,4 +623,3 @@ if __name__ == '__main__':
                 ltk,
                 stk
             )
-
