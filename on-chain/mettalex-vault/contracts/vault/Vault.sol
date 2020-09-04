@@ -2,7 +2,6 @@ pragma solidity ^0.5.2;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/ownership/Ownable.sol";
-import "../interfaces/IToken.sol";
 
 contract Vault is Ownable {
     using SafeMath for uint256;
