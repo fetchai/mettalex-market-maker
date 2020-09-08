@@ -23,7 +23,7 @@ branches and appropriate CI/CD setup however that is a refinement for later.
 
 
 # Deploying for local development
-Start a local ganache blockchain with `npx ganache-cli --determinisitic` to create
+Start a local ganache blockchain with `npx ganache-cli --d` to create
 a set of accounts:
 
     

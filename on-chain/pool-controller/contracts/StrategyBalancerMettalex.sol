@@ -109,6 +109,37 @@ contract StrategyBalancerMettalex {
         }
     }
 
+    function checkSettled() internal view returns (bool) {
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        return mVault.isSettled();
+    }
+
+    function settle() internal {
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        require(mVault.isSettled(), "mVault contract should be settled");
+        mVault.settlePositions();
+    }
+
+    // Settle all Long and Short tokens held by the contract in case of Commodity breach
+    function handleBreach() internal {
+        // TO-DO: Understand requirement and remove/keep this check
+        require(breaker == false, "!breaker");
+
+        Balancer bPool = Balancer(balancer);
+        uint256 wantBeforeSettlement = IERC20(want).balanceOf(address(this));
+
+        // Unbind tokens from Balancer pool
+        bPool.setPublicSwap(false);
+
+        unbind();
+        settle();
+
+        bPool.setPublicSwap(true);
+
+        uint256 wantAfterSettlement = IERC20(want).balanceOf(address(this));
+        supply = supply.add(wantBeforeSettlement.sub(wantAfterSettlement));
+    }
+
     function redeemPositions() internal {
         MettalexVault mVault = MettalexVault(mettalex_vault);
         uint256 ltk_qty = IERC20(long_token).balanceOf(address(this));
@@ -183,24 +214,30 @@ contract StrategyBalancerMettalex {
     }
 
     function deposit() external {
-        require(breaker == false, "!breaker");
-        Balancer bPool = Balancer(balancer);
+        if (checkSettled()) {
+            handleBreach();
+        } else {
+            require(breaker == false, "!breaker");
+            Balancer bPool = Balancer(balancer);
 
-        uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
-            address(this)
-        );
-        bPool.setPublicSwap(false);
+            uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
+                address(this)
+            );
+            bPool.setPublicSwap(false);
 
-        _depositInternal();
+            _depositInternal();
 
-        // Again enable public swap
-        bPool.setPublicSwap(true);
+            // Again enable public swap
+            bPool.setPublicSwap(true);
 
-        uint256 wantAfterMintandDeposit = IERC20(want).balanceOf(address(this));
+            uint256 wantAfterMintandDeposit = IERC20(want).balanceOf(
+                address(this)
+            );
 
-        supply = supply.add(
-            wantBeforeMintandDeposit.sub(wantAfterMintandDeposit)
-        );
+            supply = supply.add(
+                wantBeforeMintandDeposit.sub(wantAfterMintandDeposit)
+            );
+        }
     }
 
     function _depositInternal() private {
@@ -269,26 +306,48 @@ contract StrategyBalancerMettalex {
 
     // Withdraw partial funds, normally used with a vault withdrawal
     function withdraw(uint256 _amount) external {
-        require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
+        if (checkSettled()) {
+            handleBreach();
+        } else {
+            require(msg.sender == controller, "!controller");
+            require(breaker == false, "!breaker");
 
-        Balancer bPool = Balancer(balancer);
+            Balancer bPool = Balancer(balancer);
 
-        // Unbind tokens from Balancer pool
-        bPool.setPublicSwap(false);
+            // Unbind tokens from Balancer pool
+            bPool.setPublicSwap(false);
 
-        unbind();
+            unbind();
 
-        redeemPositions();
+            redeemPositions();
 
-        // Transfer out required funds to yVault.
-        IERC20(want).transfer(Controller(controller).vaults(want), _amount);
+            // Transfer out required funds to yVault.
+            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
 
-        _depositInternal();
+            _depositInternal();
 
-        bPool.setPublicSwap(true);
+            bPool.setPublicSwap(true);
 
-        supply = supply.sub(_amount);
+            supply = supply.sub(_amount);
+        }
+    }
+
+    // Update Contract addresses after breach
+    function updateCommodityAfterBreach(
+        address _vault,
+        address _ltk,
+        address _stk
+    ) external {
+        require(msg.sender == governance, "!governance");
+        bool hasLong = IERC20(long_token).balanceOf(address(this)) > 0;
+        bool hasShort = IERC20(short_token).balanceOf(address(this)) > 0;
+        if (hasLong || hasShort) {
+            handleBreach();
+        }
+
+        mettalex_vault = _vault;
+        long_token = _ltk;
+        short_token = _stk;
     }
 
     function balanceOf() external view returns (uint256) {
