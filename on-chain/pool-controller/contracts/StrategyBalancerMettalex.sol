@@ -49,6 +49,7 @@ contract StrategyBalancerMettalex {
     bool public breaker; // = false;
     // Supply tracks the number of `want` that we have lent out of other distro's
     uint256 public supply; // = 0;
+    bool public isBreachHandled;
 
     // OpenZeppelin SDK upgradeable contract
     bool private initialized;
@@ -63,6 +64,12 @@ contract StrategyBalancerMettalex {
         MettalexVault mVault = MettalexVault(mettalex_vault);
         require(mVault.isSettled(), "mVault should be settled");
         _;
+    }
+
+    modifier callOnce {
+        if (!isBreachHandled) {
+            _;
+        }
     }
 
     function initialize(address _controller) public {
@@ -127,9 +134,12 @@ contract StrategyBalancerMettalex {
     }
 
     // Settle all Long and Short tokens held by the contract in case of Commodity breach
-    function handleBreach() public settled {
+    // should be called only once
+    function handleBreach() public settled callOnce {
         // TO-DO: Understand requirement and remove/keep this check
         require(breaker == false, "!breaker");
+
+        isBreachHandled = true;
 
         Balancer bPool = Balancer(balancer);
         uint256 wantBeforeSettlement = IERC20(want).balanceOf(address(this));
@@ -304,25 +314,32 @@ contract StrategyBalancerMettalex {
     }
 
     // Withdraw partial funds, normally used with a vault withdrawal
-    function withdraw(uint256 _amount) external notSettled {
+    function withdraw(uint256 _amount) external {
+        // check if breached: return
         require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
 
-        Balancer bPool = Balancer(balancer);
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        if (mVault.isSettled()) {
+            handleBreach();
+            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
+        } else {
+            Balancer bPool = Balancer(balancer);
 
-        // Unbind tokens from Balancer pool
-        bPool.setPublicSwap(false);
+            // Unbind tokens from Balancer pool
+            bPool.setPublicSwap(false);
 
-        unbind();
+            unbind();
 
-        redeemPositions();
+            redeemPositions();
 
-        // Transfer out required funds to yVault.
-        IERC20(want).transfer(Controller(controller).vaults(want), _amount);
+            // Transfer out required funds to yVault.
+            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
 
-        _depositInternal();
+            _depositInternal();
 
-        bPool.setPublicSwap(true);
+            bPool.setPublicSwap(true);
+        }
 
         supply = supply.sub(_amount);
     }
@@ -350,7 +367,7 @@ contract StrategyBalancerMettalex {
         Balancer bPool = Balancer(balancer);
         bPool.setPublicSwap(true);
 
-        // TODO: confirm supply won't be updated
+        isBreachHandled = false;
     }
 
     function balanceOf() external view returns (uint256) {
