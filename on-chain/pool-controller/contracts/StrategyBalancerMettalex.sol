@@ -49,9 +49,28 @@ contract StrategyBalancerMettalex {
     bool public breaker; // = false;
     // Supply tracks the number of `want` that we have lent out of other distro's
     uint256 public supply; // = 0;
+    bool public isBreachHandled;
 
     // OpenZeppelin SDK upgradeable contract
     bool private initialized;
+
+    modifier notSettled {
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        require(!mVault.isSettled(), "mVault is already settled");
+        _;
+    }
+
+    modifier settled {
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        require(mVault.isSettled(), "mVault should be settled");
+        _;
+    }
+
+    modifier callOnce {
+        if (!isBreachHandled) {
+            _;
+        }
+    }
 
     function initialize(address _controller) public {
         // Single argument init method for use with ganache-cli --deterministic
@@ -107,6 +126,29 @@ contract StrategyBalancerMettalex {
         for (uint256 i = 0; i < tokens.length; i++) {
             bPool.unbind(tokens[i]);
         }
+    }
+
+    function settle() internal settled {
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        mVault.settlePositions();
+    }
+
+    // Settle all Long and Short tokens held by the contract in case of Commodity breach
+    // should be called only once
+    function handleBreach() public settled callOnce {
+        // TO-DO: Understand requirement and remove/keep this check
+        require(breaker == false, "!breaker");
+
+        isBreachHandled = true;
+
+        Balancer bPool = Balancer(balancer);
+
+        // Set public swap to false
+        bPool.setPublicSwap(false);
+
+        // Unbind tokens from Balancer pool
+        unbind();
+        settle();
     }
 
     function redeemPositions() internal {
@@ -182,7 +224,7 @@ contract StrategyBalancerMettalex {
         return wt;
     }
 
-    function deposit() external {
+    function deposit() external notSettled {
         require(breaker == false, "!breaker");
         Balancer bPool = Balancer(balancer);
 
@@ -269,26 +311,59 @@ contract StrategyBalancerMettalex {
 
     // Withdraw partial funds, normally used with a vault withdrawal
     function withdraw(uint256 _amount) external {
+        // check if breached: return
         require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
 
-        Balancer bPool = Balancer(balancer);
+        MettalexVault mVault = MettalexVault(mettalex_vault);
+        if (mVault.isSettled()) {
+            handleBreach();
+            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
+        } else {
+            Balancer bPool = Balancer(balancer);
 
-        // Unbind tokens from Balancer pool
-        bPool.setPublicSwap(false);
+            // Unbind tokens from Balancer pool
+            bPool.setPublicSwap(false);
 
-        unbind();
+            unbind();
 
-        redeemPositions();
+            redeemPositions();
 
-        // Transfer out required funds to yVault.
-        IERC20(want).transfer(Controller(controller).vaults(want), _amount);
+            // Transfer out required funds to yVault.
+            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
+
+            _depositInternal();
+
+            bPool.setPublicSwap(true);
+        }
+
+        supply = supply.sub(_amount);
+    }
+
+    // Update Contract addresses after breach
+    function updateCommodityAfterBreach(
+        address _vault,
+        address _ltk,
+        address _stk
+    ) external settled {
+        require(msg.sender == governance, "!governance");
+        bool hasLong = IERC20(long_token).balanceOf(address(this)) > 0;
+        bool hasShort = IERC20(short_token).balanceOf(address(this)) > 0;
+        if (hasLong || hasShort) {
+            handleBreach();
+        }
+
+        mettalex_vault = _vault;
+        long_token = _ltk;
+        short_token = _stk;
 
         _depositInternal();
 
+        // public swap was set to false during handle breach
+        Balancer bPool = Balancer(balancer);
         bPool.setPublicSwap(true);
 
-        supply = supply.sub(_amount);
+        isBreachHandled = false;
     }
 
     function balanceOf() external view returns (uint256) {

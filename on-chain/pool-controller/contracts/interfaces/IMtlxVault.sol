@@ -17,6 +17,10 @@ interface MettalexVault {
 
     function priceCap() external view returns (uint256 _priceCap);
 
+    function isSettled() external view returns (bool _isSettled);
+
+    function settlePositions() external;
+
     function mintPositions(uint256 qtyToMint) external;
 
     function redeemPositions(uint256 qtyToRedeem) external;
