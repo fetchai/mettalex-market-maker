@@ -23,12 +23,11 @@ earn(w3, y_vault)
 reporter.print_balances(y_vault.address, 'Y Vault')
 reporter.print_balances(balancer.address, 'Balancer AMM')
 
-strategy.functions.supply().call()
 withdraw(w3, y_vault, 11000)
-
-
 mVault = contracts['Vault']
-strategy = connect_strategy(w3, '0xFcCeD5E997E7fb1D0594518D3eD57245bB8ed17E')
+
+# update address returned by: python3 setup_contracts.py -a deploy
+strategy = connect_strategy(w3, '0x9b1f7F645351AF3631a656421eD2e40f2802E6c0')
 acct = w3.eth.defaultAccount
 
 mVault.functions.isSettled().call()
