@@ -142,7 +142,6 @@ contract StrategyBalancerMettalex {
         isBreachHandled = true;
 
         Balancer bPool = Balancer(balancer);
-        uint256 wantBeforeSettlement = IERC20(want).balanceOf(address(this));
 
         // Set public swap to false
         bPool.setPublicSwap(false);
@@ -150,9 +149,6 @@ contract StrategyBalancerMettalex {
         // Unbind tokens from Balancer pool
         unbind();
         settle();
-
-        uint256 wantAfterSettlement = IERC20(want).balanceOf(address(this));
-        supply = supply.add(wantAfterSettlement.sub(wantBeforeSettlement));
     }
 
     function redeemPositions() internal {
