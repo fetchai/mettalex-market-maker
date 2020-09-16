@@ -395,6 +395,68 @@ contract StrategyBalancerMettalex {
         return totalValuation;
     }
 
+    function getExpectedOutAmount(
+        address bPoolAddress,
+        address fromToken,
+        address toToken,
+        uint256 fromTokenAmount
+    ) public view returns (uint256 tokensReturned) {
+        require(Balancer(bPoolAddress).isBound(fromToken));
+        require(Balancer(bPoolAddress).isBound(toToken));
+        uint256 swapFee = Balancer(bPoolAddress).getSwapFee();
+
+        uint256 tokenBalanceIn = Balancer(bPoolAddress).getBalance(fromToken);
+        uint256 tokenBalanceOut = Balancer(bPoolAddress).getBalance(toToken);
+
+        uint256 tokenWeightIn = Balancer(bPoolAddress).getDenormalizedWeight(
+            fromToken
+        );
+        uint256 tokenWeightOut = Balancer(bPoolAddress).getDenormalizedWeight(
+            toToken
+        );
+
+        tokensReturned = Balancer(bPoolAddress)
+            .calcOutGivenIn(
+            tokenBalanceIn,
+            tokenWeightIn,
+            tokenBalanceOut,
+            tokenWeightOut,
+            fromTokenAmount,
+            swapFee
+        );
+    }
+     
+     function getExpectedInAmount(
+        address bPoolAddress,
+        address fromToken,
+        address toToken,
+        uint256 toTokenAmount
+    ) public view returns (uint256 tokensReturned) {
+        require(Balancer(bPoolAddress).isBound(fromToken));
+        require(Balancer(bPoolAddress).isBound(toToken));
+        uint256 swapFee = Balancer(bPoolAddress).getSwapFee();
+
+        uint256 tokenBalanceIn = Balancer(bPoolAddress).getBalance(fromToken);
+        uint256 tokenBalanceOut = Balancer(bPoolAddress).getBalance(toToken);
+
+        uint256 tokenWeightIn = Balancer(bPoolAddress).getDenormalizedWeight(
+            fromToken
+        );
+        uint256 tokenWeightOut = Balancer(bPoolAddress).getDenormalizedWeight(
+            toToken
+        );
+
+        tokensReturned = Balancer(bPoolAddress)
+            .calcInGivenOut(
+            tokenBalanceIn,
+            tokenWeightIn,
+            tokenBalanceOut,
+            tokenWeightOut,
+            toTokenAmount,
+            swapFee
+        );
+    }
+
     function setGovernance(address _governance) external {
         require(msg.sender == governance, "!governance");
         governance = _governance;
