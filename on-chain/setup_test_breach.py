@@ -27,7 +27,7 @@ withdraw(w3, y_vault, 11000)
 mVault = contracts['Vault']
 
 # update address returned by: python3 setup_contracts.py -a deploy
-strategy = connect_strategy(w3, '0x9b1f7F645351AF3631a656421eD2e40f2802E6c0')
+strategy = connect_strategy(w3, '0xe93e3B649d4E01e47dd2170CAFEf0651477649Da')
 acct = w3.eth.defaultAccount
 
 mVault.functions.isSettled().call()
@@ -35,6 +35,33 @@ mVault.functions.priceSpot().call()
 mVault.functions.priceFloor().call()
 mVault.functions.priceCap().call()
 strategy.functions.supply().call()
+
+# balancer get number of tokens
+balancer.functions.getNumTokens().call()
+# Normalized weights
+balancer.functions.getDenormalizedWeight(ltk.address).call()
+balancer.functions.getDenormalizedWeight(stk.address).call()
+balancer.functions.getDenormalizedWeight(coin.address).call()
+mVault.functions.priceSpot().call()
+
+mVault.functions.updateSpot(2500001).transact(
+    {'from': acct, 'gas': 1_000_000}
+)
+
+balancer.functions.getDenormalizedWeight(ltk.address).call()
+balancer.functions.getDenormalizedWeight(stk.address).call()
+balancer.functions.getDenormalizedWeight(coin.address).call()
+mVault.functions.priceSpot().call()
+balancer.functions.MAX_TOTAL_WEIGHT().call()
+
+strategy.functions.updateSpotAndNormalizeWeights().transact(
+    {'from': acct, 'gas': 1_000_000}
+)
+
+balancer.functions.getDenormalizedWeight(ltk.address).call()
+balancer.functions.getDenormalizedWeight(stk.address).call()
+balancer.functions.getDenormalizedWeight(coin.address).call()
+mVault.functions.priceSpot().call()
 
 # check handleBreach should fail if vault not breached
 strategy.functions.handleBreach().transact(
