@@ -224,6 +224,77 @@ contract StrategyBalancerMettalex {
         return wt;
     }
 
+    function updateSpotAndNormalizeWeights() external notSettled {
+        // Get AMM Pool token balances
+        uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
+        uint256 balancerLtk = IERC20(long_token).balanceOf(balancer);
+        uint256 balancerWant = IERC20(want).balanceOf(balancer);
+
+        // Re-calculate de-normalised weights
+        uint256[3] memory bal;
+        bal[0] = balancerStk;
+        bal[1] = balancerLtk;
+        bal[2] = balancerWant;
+        uint256[3] memory wt = calcDenormWeights(bal);
+
+        address[3] memory tokens = [short_token, long_token, want];
+
+        sortAndRebind(wt, bal, tokens);
+    }
+
+    function sortAndRebind(
+        uint256[3] memory wt,
+        uint256[3] memory balance,
+        address[3] memory tokens
+    ) internal {
+        if (wt[0] > wt[1]) {
+            uint256 tempWt = wt[0];
+            wt[0] = wt[1];
+            wt[1] = tempWt;
+
+            uint256 tempBalance = balance[0];
+            balance[0] = balance[1];
+            balance[1] = tempBalance;
+
+            address tempToken = tokens[0];
+            tokens[0] = tokens[1];
+            tokens[1] = tempToken;
+        }
+
+        if (wt[1] > wt[2]) {
+            uint256 tempWt = wt[1];
+            wt[1] = wt[2];
+            wt[2] = tempWt;
+
+            uint256 tempBalance = balance[1];
+            balance[1] = balance[2];
+            balance[2] = tempBalance;
+
+            address tempToken = tokens[1];
+            tokens[1] = tokens[2];
+            tokens[2] = tempToken;
+        }
+
+        if (wt[0] > wt[1]) {
+            uint256 tempWt = wt[0];
+            wt[0] = wt[1];
+            wt[1] = tempWt;
+
+            uint256 tempBalance = balance[0];
+            balance[0] = balance[1];
+            balance[1] = tempBalance;
+
+            address tempToken = tokens[0];
+            tokens[0] = tokens[1];
+            tokens[1] = tempToken;
+        }
+
+        Balancer bPool = Balancer(balancer);
+        bPool.rebind(tokens[0], balance[0], wt[0]);
+        bPool.rebind(tokens[1], balance[1], wt[1]);
+        bPool.rebind(tokens[2], balance[2], wt[2]);
+    }
+
     function deposit() external notSettled {
         require(breaker == false, "!breaker");
         Balancer bPool = Balancer(balancer);
@@ -258,11 +329,10 @@ contract StrategyBalancerMettalex {
 
         uint256 wantAfterMint = IERC20(want).balanceOf(address(this));
 
-        Balancer bPool = Balancer(balancer);
         // Get AMM Pool token balances
-        uint256 balancerWant = IERC20(want).balanceOf(address(bPool));
-        uint256 balancerLtk = IERC20(long_token).balanceOf(address(bPool));
-        uint256 balancerStk = IERC20(short_token).balanceOf(address(bPool));
+        uint256 balancerWant = IERC20(want).balanceOf(balancer);
+        uint256 balancerLtk = IERC20(long_token).balanceOf(balancer);
+        uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
 
         // Get Strategy token balances
         uint256 starategyWant = wantAfterMint;
@@ -285,6 +355,7 @@ contract StrategyBalancerMettalex {
         bal[2] = strategyStk.add(balancerStk);
         uint256[3] memory wt = calcDenormWeights(bal);
 
+        Balancer bPool = Balancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
         bool isWantBound = bPool.isBound(want);
         bool isStkBound = bPool.isBound(short_token);
