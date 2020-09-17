@@ -78,4 +78,13 @@ interface Balancer {
         uint256 tokenAmountIn,
         uint256 swapFee
     ) external pure returns (uint256 tokenAmountOut);
+    
+    function calcInGivenOut(
+        uint tokenBalanceIn,
+        uint tokenWeightIn,
+        uint tokenBalanceOut,
+        uint tokenWeightOut,
+        uint tokenAmountOut,
+        uint swapFee
+    ) external pure returns (uint tokenAmountIn);
 }
