@@ -428,8 +428,17 @@ contract StrategyBalancerMettalex {
             fromToken,
             toToken
         );
-        uint256 effectivePrice = ((fromTokenAmount * 10**18) / tokensReturned);
-        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
+        uint256 effectivePrice = (fromTokenAmount.mul(10**18)).div(
+            tokensReturned
+        );
+
+        if (effectivePrice <= spotPrice) {
+            priceImpact = 0;
+        } else {
+            priceImpact = ((effectivePrice.sub(spotPrice)).mul(10**18)).div(
+                spotPrice
+            );
+        }
     }
 
     function getExpectedInAmount(
@@ -465,8 +474,17 @@ contract StrategyBalancerMettalex {
             fromToken,
             toToken
         );
-        uint256 effectivePrice = ((tokensReturned * 10**18) / toTokenAmount);
-        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
+        uint256 effectivePrice = (tokensReturned.mul(10**18)).div(
+            toTokenAmount
+        );
+
+        if (effectivePrice <= spotPrice) {
+            priceImpact = 0;
+        } else {
+            priceImpact = ((effectivePrice.sub(spotPrice)).mul(10**18)).div(
+                spotPrice
+            );
+        }
     }
 
     function setGovernance(address _governance) external {
