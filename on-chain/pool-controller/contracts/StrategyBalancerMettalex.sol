@@ -400,7 +400,7 @@ contract StrategyBalancerMettalex {
         address fromToken,
         address toToken,
         uint256 fromTokenAmount
-    ) public view returns (uint256 tokensReturned) {
+    ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
         require(Balancer(bPoolAddress).isBound(fromToken));
         require(Balancer(bPoolAddress).isBound(toToken));
         uint256 swapFee = Balancer(bPoolAddress).getSwapFee();
@@ -415,8 +415,7 @@ contract StrategyBalancerMettalex {
             toToken
         );
 
-        tokensReturned = Balancer(bPoolAddress)
-            .calcOutGivenIn(
+        tokensReturned = Balancer(bPoolAddress).calcOutGivenIn(
             tokenBalanceIn,
             tokenWeightIn,
             tokenBalanceOut,
@@ -424,14 +423,21 @@ contract StrategyBalancerMettalex {
             fromTokenAmount,
             swapFee
         );
+
+        uint256 spotPrice = Balancer(bPoolAddress).getSpotPrice(
+            fromToken,
+            toToken
+        );
+        uint256 effectivePrice = ((fromTokenAmount * 10**18) / tokensReturned);
+        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
     }
-     
-     function getExpectedInAmount(
+
+    function getExpectedInAmount(
         address bPoolAddress,
         address fromToken,
         address toToken,
         uint256 toTokenAmount
-    ) public view returns (uint256 tokensReturned) {
+    ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
         require(Balancer(bPoolAddress).isBound(fromToken));
         require(Balancer(bPoolAddress).isBound(toToken));
         uint256 swapFee = Balancer(bPoolAddress).getSwapFee();
@@ -446,8 +452,7 @@ contract StrategyBalancerMettalex {
             toToken
         );
 
-        tokensReturned = Balancer(bPoolAddress)
-            .calcInGivenOut(
+        tokensReturned = Balancer(bPoolAddress).calcInGivenOut(
             tokenBalanceIn,
             tokenWeightIn,
             tokenBalanceOut,
@@ -455,6 +460,13 @@ contract StrategyBalancerMettalex {
             toTokenAmount,
             swapFee
         );
+
+        uint256 spotPrice = Balancer(bPoolAddress).getSpotPrice(
+            fromToken,
+            toToken
+        );
+        uint256 effectivePrice = ((tokensReturned * 10**18) / toTokenAmount);
+        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
     }
 
     function setGovernance(address _governance) external {
