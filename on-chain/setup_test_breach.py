@@ -1,6 +1,7 @@
 # This is a helper file to test breach functionality on Python console
 
 from setup_contracts import full_setup, deposit, earn, BalanceReporter, connect_deployed, withdraw, connect_strategy, deploy_contract, get_contracts, whitelist_vault
+# from setup_testnet_pool import get_spot_price
 import os
 import sys
 
@@ -27,7 +28,7 @@ withdraw(w3, y_vault, 11000)
 mVault = contracts['Vault']
 
 # update address returned by: python3 setup_contracts.py -a deploy
-strategy = connect_strategy(w3, '0xe93e3B649d4E01e47dd2170CAFEf0651477649Da')
+strategy = connect_strategy(w3, '0xfE82e8f24A51E670133f4268cDfc164c49FC3b37')
 acct = w3.eth.defaultAccount
 
 mVault.functions.isSettled().call()
@@ -42,9 +43,11 @@ balancer.functions.getNumTokens().call()
 balancer.functions.getDenormalizedWeight(ltk.address).call()
 balancer.functions.getDenormalizedWeight(stk.address).call()
 balancer.functions.getDenormalizedWeight(coin.address).call()
+balancer.functions.getSpotPrice(ltk.address, coin.address).call()
+
 mVault.functions.priceSpot().call()
 
-mVault.functions.updateSpot(2500001).transact(
+mVault.functions.updateSpot(2000000).transact(
     {'from': acct, 'gas': 1_000_000}
 )
 
@@ -53,6 +56,7 @@ balancer.functions.getDenormalizedWeight(stk.address).call()
 balancer.functions.getDenormalizedWeight(coin.address).call()
 mVault.functions.priceSpot().call()
 balancer.functions.MAX_TOTAL_WEIGHT().call()
+strategy.functions.updateSpotAndNormalizeWeightsT().call()
 
 strategy.functions.updateSpotAndNormalizeWeights().transact(
     {'from': acct, 'gas': 1_000_000}
@@ -85,7 +89,7 @@ strategy.functions.supply().call()
 strategy.functions.isBreachHandled().call()
 
 # trigger breach
-tx_hash = mVault.functions.updateSpot(3000001).transact(
+tx_hash = mVault.functions.updateSpot(2500000).transact(
     {'from': acct, 'gas': 1_000_000}
 )
 tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
