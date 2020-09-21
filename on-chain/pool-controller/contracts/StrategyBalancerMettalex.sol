@@ -217,9 +217,9 @@ contract StrategyBalancerMettalex {
         //        ]
         //        new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
 
-        wt[0] = price.d_s.mul(100 ether).div(2).div(price.d);
-        wt[1] = price.d_l.mul(100 ether).div(2).div(price.d);
-        wt[2] = price.d_c.mul(100 ether).div(2).div(price.d);
+        wt[0] = price.d_s.mul(47 ether).div(price.d).add(1 ether);
+        wt[1] = price.d_l.mul(47 ether).div(price.d).add(1 ether);
+        wt[2] = price.d_c.mul(47 ether).div(price.d).add(1 ether);
 
         //        wt[1] = bal[1].mul(100 ether).mul(price.d_l).mul(price.spot.sub(price.floor)).div(price.range).div(d).div(2);
         //        wt[2] = bal[2].mul(100 ether).mul(C).mul(price.cap.sub(price.spot)).div(price.range).div(d).div(2);
@@ -246,11 +246,17 @@ contract StrategyBalancerMettalex {
         int256[3] memory delta;
 
         // Max denorm value is compatible with int256
-        delta[0] = int256(newWt[0]).sub(int256(bPool.getDenormalizedWeight(tokens[0])));
-        delta[1] = int256(newWt[1]).sub(int256(bPool.getDenormalizedWeight(tokens[1])));
-        delta[2] = int256(newWt[2]).sub(int256(bPool.getDenormalizedWeight(tokens[2])));
+        delta[0] = int256(newWt[0]).sub(
+            int256(bPool.getDenormalizedWeight(tokens[0]))
+        );
+        delta[1] = int256(newWt[1]).sub(
+            int256(bPool.getDenormalizedWeight(tokens[1]))
+        );
+        delta[2] = int256(newWt[2]).sub(
+            int256(bPool.getDenormalizedWeight(tokens[2]))
+        );
 
-        sortAndRebind(delta, newWt, bal, tok);
+        sortAndRebind(delta, newWt, bal, tokens);
     }
 
     function sortAndRebind(
@@ -385,10 +391,10 @@ contract StrategyBalancerMettalex {
         bool isStkBound = bPool.isBound(short_token);
         bool isLtkBound = bPool.isBound(long_token);
 
-        if (isWantBound == true) {
-            bPool.rebind(want, starategyWant.add(balancerWant), wt[0]);
+        if (isStkBound == true) {
+            bPool.rebind(short_token, strategyStk.add(balancerStk), wt[0]);
         } else {
-            bPool.bind(want, starategyWant.add(balancerWant), wt[0]);
+            bPool.bind(short_token, strategyStk.add(balancerStk), wt[0]);
         }
 
         if (isLtkBound == true) {
@@ -397,10 +403,10 @@ contract StrategyBalancerMettalex {
             bPool.bind(long_token, strategyLtk.add(balancerLtk), wt[1]);
         }
 
-        if (isStkBound == true) {
-            bPool.rebind(short_token, strategyStk.add(balancerStk), wt[2]);
+        if (isWantBound == true) {
+            bPool.rebind(want, starategyWant.add(balancerWant), wt[2]);
         } else {
-            bPool.bind(short_token, strategyStk.add(balancerStk), wt[2]);
+            bPool.bind(want, starategyWant.add(balancerWant), wt[2]);
         }
     }
 
