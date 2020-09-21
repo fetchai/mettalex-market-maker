@@ -28,7 +28,7 @@ withdraw(w3, y_vault, 11000)
 mVault = contracts['Vault']
 
 # update address returned by: python3 setup_contracts.py -a deploy
-strategy = connect_strategy(w3, '0xfE82e8f24A51E670133f4268cDfc164c49FC3b37')
+strategy = connect_strategy(w3, '0xC5aFE31AE505594B190AC71EA689B58139d1C354')
 acct = w3.eth.defaultAccount
 
 mVault.functions.isSettled().call()
@@ -39,7 +39,7 @@ strategy.functions.supply().call()
 
 # balancer get number of tokens
 balancer.functions.getNumTokens().call()
-# Normalized weights
+# DeNormalized weights
 balancer.functions.getDenormalizedWeight(ltk.address).call()
 balancer.functions.getDenormalizedWeight(stk.address).call()
 balancer.functions.getDenormalizedWeight(coin.address).call()
@@ -47,7 +47,7 @@ balancer.functions.getSpotPrice(ltk.address, coin.address).call()
 
 mVault.functions.priceSpot().call()
 
-mVault.functions.updateSpot(2000000).transact(
+mVault.functions.updateSpot(3000000).transact(
     {'from': acct, 'gas': 1_000_000}
 )
 
