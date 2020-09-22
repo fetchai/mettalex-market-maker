@@ -5,6 +5,7 @@ import "./interfaces/IERC20.sol";
 import "./interfaces/IMtlxVault.sol";
 import "./interfaces/IYController.sol";
 import "./lib/Address.sol";
+import "./lib/SignedSafeMath.sol";
 import "./lib/SafeMath.sol";
 import "./lib/SafeERC20.sol";
 
@@ -34,6 +35,7 @@ contract StrategyBalancerMettalex {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
+    using SignedSafeMath for int256;
 
     // ganache --deterministic USDT
     address public want; // = address(0xCfEB869F69431e42cdB54A4F4f105C19C080A601);
@@ -199,11 +201,11 @@ contract StrategyBalancerMettalex {
         // d =  x_c + C*v*x_l + C*x_s*(1 - v)
         // Try to 'avoid CompilerError: Stack too deep, try removing local variables.'
         // by using single variable to store [x_c, x_l, x_s]
-        price.d_c = bal[0];
+        price.d_c = bal[2];
         price.d_l = price.C.mul(price.spot.sub(price.floor)).mul(bal[1]).div(
             price.range
         );
-        price.d_s = price.C.mul(price.cap.sub(price.spot)).mul(bal[2]).div(
+        price.d_s = price.C.mul(price.cap.sub(price.spot)).mul(bal[0]).div(
             price.range
         );
         price.d = price.d_c.add(price.d_l).add(price.d_s);
@@ -215,13 +217,112 @@ contract StrategyBalancerMettalex {
         //        ]
         //        new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
 
-        wt[0] = price.d_c.mul(100 ether).div(2).div(price.d);
-        wt[1] = price.d_l.mul(100 ether).div(2).div(price.d);
-        wt[2] = price.d_s.mul(100 ether).div(2).div(price.d);
+        wt[0] = price.d_s.mul(47 ether).div(price.d).add(1 ether);
+        wt[1] = price.d_l.mul(47 ether).div(price.d).add(1 ether);
+        wt[2] = price.d_c.mul(47 ether).div(price.d).add(1 ether);
 
         //        wt[1] = bal[1].mul(100 ether).mul(price.d_l).mul(price.spot.sub(price.floor)).div(price.range).div(d).div(2);
         //        wt[2] = bal[2].mul(100 ether).mul(C).mul(price.cap.sub(price.spot)).div(price.range).div(d).div(2);
         return wt;
+    }
+
+    function updateSpotAndNormalizeWeights() external notSettled {
+        // Get AMM Pool token balances
+        uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
+        uint256 balancerLtk = IERC20(long_token).balanceOf(balancer);
+        uint256 balancerWant = IERC20(want).balanceOf(balancer);
+
+        // Re-calculate de-normalised weights
+        uint256[3] memory bal;
+        bal[0] = balancerStk;
+        bal[1] = balancerLtk;
+        bal[2] = balancerWant;
+        uint256[3] memory newWt = calcDenormWeights(bal);
+
+        address[3] memory tokens = [short_token, long_token, want];
+
+        // Calculate delta in weights
+        Balancer bPool = Balancer(balancer);
+        int256[3] memory delta;
+
+        // Max denorm value is compatible with int256
+        delta[0] = int256(newWt[0]).sub(
+            int256(bPool.getDenormalizedWeight(tokens[0]))
+        );
+        delta[1] = int256(newWt[1]).sub(
+            int256(bPool.getDenormalizedWeight(tokens[1]))
+        );
+        delta[2] = int256(newWt[2]).sub(
+            int256(bPool.getDenormalizedWeight(tokens[2]))
+        );
+
+        sortAndRebind(delta, newWt, bal, tokens);
+    }
+
+    function sortAndRebind(
+        int256[3] memory delta,
+        uint256[3] memory wt,
+        uint256[3] memory balance,
+        address[3] memory tokens
+    ) internal {
+        if (delta[0] > delta[1]) {
+            int256 tempDelta = delta[0];
+            delta[0] = delta[1];
+            delta[1] = tempDelta;
+
+            uint256 tempBalance = balance[0];
+            balance[0] = balance[1];
+            balance[1] = tempBalance;
+
+            uint256 tempWt = wt[0];
+            wt[0] = wt[1];
+            wt[1] = tempWt;
+
+            address tempToken = tokens[0];
+            tokens[0] = tokens[1];
+            tokens[1] = tempToken;
+        }
+
+        if (delta[1] > delta[2]) {
+            int256 tempDelta = delta[1];
+            delta[1] = delta[2];
+            delta[2] = tempDelta;
+
+            uint256 tempBalance = balance[1];
+            balance[1] = balance[2];
+            balance[2] = tempBalance;
+
+            uint256 tempWt = wt[1];
+            wt[1] = wt[2];
+            wt[2] = tempWt;
+
+            address tempToken = tokens[1];
+            tokens[1] = tokens[2];
+            tokens[2] = tempToken;
+        }
+
+        if (delta[0] > delta[1]) {
+            int256 tempDelta = delta[0];
+            delta[0] = delta[1];
+            delta[1] = tempDelta;
+
+            uint256 tempBalance = balance[0];
+            balance[0] = balance[1];
+            balance[1] = tempBalance;
+
+            uint256 tempWt = wt[0];
+            wt[0] = wt[1];
+            wt[1] = tempWt;
+
+            address tempToken = tokens[0];
+            tokens[0] = tokens[1];
+            tokens[1] = tempToken;
+        }
+
+        Balancer bPool = Balancer(balancer);
+        bPool.rebind(tokens[0], balance[0], wt[0]);
+        bPool.rebind(tokens[1], balance[1], wt[1]);
+        bPool.rebind(tokens[2], balance[2], wt[2]);
     }
 
     function deposit() external notSettled {
@@ -258,11 +359,10 @@ contract StrategyBalancerMettalex {
 
         uint256 wantAfterMint = IERC20(want).balanceOf(address(this));
 
-        Balancer bPool = Balancer(balancer);
         // Get AMM Pool token balances
-        uint256 balancerWant = IERC20(want).balanceOf(address(bPool));
-        uint256 balancerLtk = IERC20(long_token).balanceOf(address(bPool));
-        uint256 balancerStk = IERC20(short_token).balanceOf(address(bPool));
+        uint256 balancerWant = IERC20(want).balanceOf(balancer);
+        uint256 balancerLtk = IERC20(long_token).balanceOf(balancer);
+        uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
 
         // Get Strategy token balances
         uint256 starategyWant = wantAfterMint;
@@ -280,20 +380,21 @@ contract StrategyBalancerMettalex {
         // Re-calculate de-normalised weights
         // While calculating weights, consider all ( balancer + strategy ) tokens to even out the weights
         uint256[3] memory bal;
-        bal[0] = starategyWant.add(balancerWant);
+        bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
-        bal[2] = strategyStk.add(balancerStk);
+        bal[2] = starategyWant.add(balancerWant);
         uint256[3] memory wt = calcDenormWeights(bal);
 
+        Balancer bPool = Balancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
         bool isWantBound = bPool.isBound(want);
         bool isStkBound = bPool.isBound(short_token);
         bool isLtkBound = bPool.isBound(long_token);
 
-        if (isWantBound == true) {
-            bPool.rebind(want, starategyWant.add(balancerWant), wt[0]);
+        if (isStkBound == true) {
+            bPool.rebind(short_token, strategyStk.add(balancerStk), wt[0]);
         } else {
-            bPool.bind(want, starategyWant.add(balancerWant), wt[0]);
+            bPool.bind(short_token, strategyStk.add(balancerStk), wt[0]);
         }
 
         if (isLtkBound == true) {
@@ -302,10 +403,10 @@ contract StrategyBalancerMettalex {
             bPool.bind(long_token, strategyLtk.add(balancerLtk), wt[1]);
         }
 
-        if (isStkBound == true) {
-            bPool.rebind(short_token, strategyStk.add(balancerStk), wt[2]);
+        if (isWantBound == true) {
+            bPool.rebind(want, starategyWant.add(balancerWant), wt[2]);
         } else {
-            bPool.bind(short_token, strategyStk.add(balancerStk), wt[2]);
+            bPool.bind(want, starategyWant.add(balancerWant), wt[2]);
         }
     }
 
