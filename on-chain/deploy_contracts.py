@@ -24,12 +24,12 @@ def connect(network, account='user'):
         except:
             raise Exception("Ensure ganache-cli is connected")
     elif network == 'kovan':
-        from web3.middleware import construct_sign_and_send_raw_middleware
-        from web3.auto.infura.kovan import w3
         config = read_config()
-
         os.environ['WEB3_INFURA_PROJECT_ID'] = config['infura']['project_id']
         os.environ['WEB3_INFURA_API_SECRET'] = config['infura']['secret']
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.auto.infura.kovan import w3
 
         admin = w3.eth.account.from_key(config[account]['key'])
         w3.eth.defaultAccount = admin.address
@@ -142,25 +142,38 @@ def connect_deployed(w3, contracts):
     if id == 42:
         network = 'kovan'
 
+    deployed_contracts = {}
+
     for k in contracts.keys():
         if contract_cache[k]:
-            deployed_contracts = {
-                k: connect_contract(w3, contracts[k], contract_cache[k])
-            }
+            deployed_contracts[k] = connect_contract(
+                w3, contracts[k], contract_cache[k])
+
         else:
             if k == 'BPool':
-                deployed_contracts = {
-                    k: create_balancer_pool(
-                        w3, contracts[k], connect_contract(w3, contracts['BFactory'], contract_cache['BFactory']))
-                }
+                deployed_contracts[k] = create_balancer_pool(
+                    w3, contracts[k], connect_contract(w3, contracts['BFactory'], contract_cache['BFactory']))
+
+            elif k == 'YController':
+                deployed_contracts[k] = deploy_contract(
+                    w3, contracts[k], w3.eth.defaultAccount)
+
+            elif k == 'YVault':
+                deployed_contracts[k] = deploy_contract(
+                    w3, contracts[k], contract_cache['Coin'], contract_cache['YController'])
+
+            elif k == 'PoolController':
+                deployed_contracts[k] = deploy_upgradeable_strategy(
+                    w3, deployed_contracts['YController'], deployed_contracts['Coin'], deployed_contracts['BPool'], deployed_contracts['Vault'], deployed_contracts['Long'], deployed_contracts['Short'])
             else:
-                deployed_contracts = {
-                    k: deploy_contract(w3, contracts[k], *args[network][k])
-                }
+                deployed_contracts[k] = deploy_contract(
+                    w3, contracts[k], *args[network][k])
+        if  k == 'PoolController':                  
+            print(deployed_contracts['PoolController'].address)
         contract_cache[k] = deployed_contracts[k].address
 
     with open('contract_cache.json', 'w') as f:
-            json.dump(contract_cache, f)
+        json.dump(contract_cache, f)
     return deployed_contracts
 
 
