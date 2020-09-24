@@ -434,7 +434,7 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-    assert args.network == 'local' or args.network == 'kovan'
+    assert args.network in {'local', 'kovan'}
 
     w3, admin = connect(args.network, 'admin')
     contracts = get_contracts(w3)
@@ -443,12 +443,16 @@ if __name__ == '__main__':
         deployed_contracts = deploy(w3, contracts)
     elif args.action == 'connect':
         deployed_contracts = connect_deployed(w3, contracts)
-    elif args.action == 'setup': #will deploy and do the full setup
+    elif args.action == 'setup':
+        #  will deploy and do the full setup
         w3, acc, deployed_contracts = full_setup(w3, admin)
+    else:
+        raise ValueError(f'Unknown action: {args.action}')
 
     reporter = BalanceReporter(
         w3, deployed_contracts['Coin'], deployed_contracts['Long'], deployed_contracts['Short'], deployed_contracts['YVault'])
 
+    y_vault = deployed_contracts['YVault']
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     # Print user balance
