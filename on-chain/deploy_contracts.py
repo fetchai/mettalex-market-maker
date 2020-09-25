@@ -23,6 +23,20 @@ def connect(network, account='user'):
             admin = w3.eth.accounts[0]
         except:
             raise Exception("Ensure ganache-cli is connected")
+    elif network == 'bsc-testnet':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = 'https://data-seed-prebsc-1-s1.binance.org:8545/'
+        os.environ['WEB3_CHAIN_ID'] = '97'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
     elif network == 'kovan':
         config = read_config()
         os.environ['WEB3_INFURA_PROJECT_ID'] = config['infura']['project_id']
@@ -34,6 +48,8 @@ def connect(network, account='user'):
         admin = w3.eth.account.from_key(config[account]['key'])
         w3.eth.defaultAccount = admin.address
         w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+    else:
+        raise ValueError(f'Unknown network {network}')
 
     assert w3.isConnected()
     return w3, admin
@@ -124,8 +140,8 @@ def connect_contract(w3, contract, address):
     return deployed_contract
 
 
-def connect_deployed(w3, contracts):
-    if not os.path.isfile('contract_address.json'):
+def connect_deployed(w3, contracts, contract_file='contract_address.json', cache_file='contract_cache.json'):
+    if not os.path.isfile(contract_file):
         print('No address file')
         return
     if not os.path.isfile('args.json'):
@@ -134,13 +150,15 @@ def connect_deployed(w3, contracts):
 
     with open('args.json', 'r') as f:
         args = json.load(f)
-    with open('contract_address.json', 'r') as f:
+    with open(contract_file, 'r') as f:
         contract_cache = json.load(f)
 
     id = w3.eth.chainId
     network = 'local'
     if id == 42:
         network = 'kovan'
+    elif id == 97:
+        network = 'bsc-testnet'
 
     deployed_contracts = {}
 
@@ -170,12 +188,12 @@ def connect_deployed(w3, contracts):
                     w3, contracts[k], *args[network][k])
         contract_cache[k] = deployed_contracts[k].address
 
-    with open('contract_cache.json', 'w') as f:
+    with open(cache_file, 'w') as f:
         json.dump(contract_cache, f)
     return deployed_contracts
 
 
-def deploy(w3, contracts):
+def deploy(w3, contracts, cache_file='contract_cache.json'):
     acct = w3.eth.defaultAccount
     balancer_factory = deploy_contract(w3, contracts['BFactory'])
     balancer = create_balancer_pool(w3, contracts['BPool'], balancer_factory)
@@ -215,7 +233,7 @@ def deploy(w3, contracts):
         'YController': y_controller.address,
         'PoolController': strategy.address
     }
-    with open('contract_cache.json', 'w') as f:
+    with open(cache_file, 'w') as f:
         json.dump(contract_addresses, f)
 
     deployed_contracts = {
@@ -430,11 +448,11 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--network', '-n', dest='network', default='local',
-        help='For connecting to local or kovan network'
+        help='For connecting to local, kovan or bsc-testnet network'
     )
 
     args = parser.parse_args()
-    assert args.network in {'local', 'kovan'}
+    assert args.network in {'local', 'kovan', 'bsc-testnet'}
 
     w3, admin = connect(args.network, 'admin')
     contracts = get_contracts(w3)
