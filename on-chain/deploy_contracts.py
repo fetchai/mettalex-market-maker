@@ -387,6 +387,32 @@ def set_price(w3, vault, price):
     print(f'{vault_name} spot changed from {old_spot} to {new_spot}')
 
 
+def print_mettalex_vault(w3, contracts, address=None):
+    vault_contract = contracts['Vault']
+    if address is None:
+        address = vault_contract.address
+
+    vault = w3.eth.contract(address=address, abi=vault_contract.abi)
+
+    coin_address = vault.functions.collateralToken().call()
+    coin = w3.eth.contract(address=coin_address, abi=contracts['Coin'].abi)
+    ltok_address = vault.functions.longPositionToken().call()
+    ltok = w3.eth.contract(address=ltok_address, abi=contracts['Long'].abi)
+    stok_address = vault.functions.shortPositionToken().call()
+    stok = w3.eth.contract(address=stok_address, abi=contracts['Short'].abi)
+
+    name = vault.functions.contractName().call()
+    vault_floor = vault.functions.priceFloor().call()
+    vault_cap = vault.functions.priceCap().call()
+    collateral_per_unit = vault.functions.collateralPerUnit().call()
+    print(f'{name}')
+    print(f'Floor: {vault_floor}, Cap: {vault_cap} -> Collateral Per Unit {collateral_per_unit}')
+    coin_dp = coin.functions.decimals().call()
+    ltok_dp = ltok.functions.decimals().call()
+    cpu_ticks = collateral_per_unit * 10**(ltok_dp - coin_dp)
+    print(f'Dollar value of 1 position token pair = {cpu_ticks}')
+
+
 class BalanceReporter(object):
     def __init__(self, w3, coin, ltk, stk, y_vault):
         self.w3 = w3
