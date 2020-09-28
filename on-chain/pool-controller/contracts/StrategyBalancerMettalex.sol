@@ -74,7 +74,7 @@ contract StrategyBalancerMettalex {
         }
     }
 
-    function initialize(address _controller) public {
+    function initialize(address _controller, address _strategyManager) public {
         // Single argument init method for use with ganache-cli --deterministic
         // and contracts created in a set order
         require(!initialized, "Already initialized");
@@ -85,12 +85,14 @@ contract StrategyBalancerMettalex {
         short_token = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
         governance = msg.sender;
         controller = _controller;
+        strategyManager = _strategyManager;
         breaker = false;
         supply = 0;
     }
 
     function initialize(
         address _controller,
+        address _strategyManager,
         address _want,
         address _balancer,
         address _mettalex_vault,
@@ -106,6 +108,7 @@ contract StrategyBalancerMettalex {
         short_token = _short_token;
         governance = msg.sender;
         controller = _controller;
+        strategyManager = _strategyManager;
         breaker = false;
         supply = 0;
     }
@@ -413,7 +416,7 @@ contract StrategyBalancerMettalex {
     // Withdraw partial funds, normally used with a vault withdrawal
     function withdraw(uint256 _amount) external {
         // check if breached: return
-        require(msg.sender == controller, "!controller");
+        require(msg.sender == strategyManager, "!strategyManager");
         require(breaker == false, "!breaker");
 
         MettalexVault mVault = MettalexVault(mettalex_vault);
@@ -578,5 +581,10 @@ contract StrategyBalancerMettalex {
     function setController(address _controller) external {
         require(msg.sender == governance, "!governance");
         controller = _controller;
+    }
+
+    function setStrategyManager(address _strategyManager) external {
+        require(msg.sender == governance, "!governance");
+        strategyManager = _strategyManager;
     }
 }
