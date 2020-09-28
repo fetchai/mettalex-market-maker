@@ -138,7 +138,7 @@ def upgrade_strategy(w3, strategy, y_controller, *args):
     return strategy
 
 
-def deploy(w3, contracts):
+def deploy(w3, contracts, contract_cache_file='contract_cache.json'):
     acct = w3.eth.defaultAccount
     balancer_factory = deploy_contract(w3, contracts['BFactory'])
     balancer = create_balancer_pool(w3, contracts['BPool'], balancer_factory)
@@ -174,16 +174,16 @@ def deploy(w3, contracts):
         'YController': y_controller.address,
         'PoolController': strategy.address
     }
-    with open('contract_cache.json', 'w') as f:
+    with open(contract_cache_file, 'w') as f:
         json.dump(deployed_contracts, f)
     return balancer_factory, balancer, coin, ltk, stk, vault, y_controller, y_vault, strategy
 
 
-def connect_deployed():
-    if not os.path.isfile('contract_cache.json'):
+def connect_deployed(contract_cache_file='contract_cache.json'):
+    if not os.path.isfile(contract_cache_file):
         print('No cache file')
         return
-    with open('contract_cache.json', 'r') as f:
+    with open(contract_cache_file, 'r') as f:
         contract_cache = json.load(f)
     w3, admin = connect()
     contracts = get_contracts(w3)
@@ -410,7 +410,7 @@ def withdraw(w3, y_vault, amount, customAccount=None):
 def distribute_coin(w3, coin, amount=200000, customAccount=None):
     acct = w3.eth.defaultAccount
     if customAccount:
-        acct = customAccount;
+        acct = customAccount
     transfer_amount = amount * 10 ** (coin.functions.decimals().call())
     tx_hash = coin.functions.transfer(acct, transfer_amount).transact(
         {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
@@ -422,7 +422,7 @@ def distribute_coin(w3, coin, amount=200000, customAccount=None):
 def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=None):
     acct = w3.eth.defaultAccount
     if customAccount:
-        acct = customAccount;
+        acct = customAccount
     collateralAmount_unitless = collateralAmount * 10 ** (coin.functions.decimals().call())
     tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
         {'from': customAccount, 'gas': 5_000_000}
