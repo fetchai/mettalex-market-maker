@@ -391,22 +391,26 @@ contract StrategyBalancerMettalex {
         bool isStkBound = bPool.isBound(short_token);
         bool isLtkBound = bPool.isBound(long_token);
 
-        if (isStkBound == true) {
-            bPool.rebind(short_token, strategyStk.add(balancerStk), wt[0]);
-        } else {
+        if (isStkBound != true && isLtkBound != true && isWantBound != true) {
             bPool.bind(short_token, strategyStk.add(balancerStk), wt[0]);
-        }
-
-        if (isLtkBound == true) {
-            bPool.rebind(long_token, strategyLtk.add(balancerLtk), wt[1]);
-        } else {
             bPool.bind(long_token, strategyLtk.add(balancerLtk), wt[1]);
-        }
-
-        if (isWantBound == true) {
-            bPool.rebind(want, starategyWant.add(balancerWant), wt[2]);
-        } else {
             bPool.bind(want, starategyWant.add(balancerWant), wt[2]);
+        } else {
+            int256[3] memory delta;
+            address[3] memory tokens = [short_token, long_token, want];
+
+            // Max denorm value is compatible with int256
+            delta[0] = int256(wt[0]).sub(
+                int256(bPool.getDenormalizedWeight(tokens[0]))
+            );
+            delta[1] = int256(wt[1]).sub(
+                int256(bPool.getDenormalizedWeight(tokens[1]))
+            );
+            delta[2] = int256(wt[2]).sub(
+                int256(bPool.getDenormalizedWeight(tokens[2]))
+            );
+
+            sortAndRebind(delta, wt, bal, tokens);
         }
     }
 
