@@ -465,6 +465,75 @@ def earn(w3, y_vault):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Liquidity supplied to AMM balancer. Earn Function Caller: {acct}')
 
+def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, min_qty_out=None, max_price=None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
+    print(
+        f'User: {acct} making a swap in balancer. Token_in: ${tok_in.functions.symbol().call()} Token_out: ${tok_out.functions.symbol().call()}')
+    qty_in_unitless = int(qty_in * 10 ** (tok_in.functions.decimals().call()))
+
+    if qty_in_unitless > tok_in.functions.allowance(acct, balancer.address).call():
+        tx_hash = tok_in.functions.approve(balancer.address, qty_in_unitless).transact(
+            {'from': acct, 'gas': 1_000_000}
+        )
+        tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    if min_qty_out is None:
+        # Default to allowing 10% slippage
+        spot_price = get_spot_price(w3, balancer, tok_in, tok_out, unitless=False)
+        print('spot price is', spot_price)
+        min_qty_out = qty_in / spot_price * 0.9
+        print(f'Minimum output token quantity not specified: using {min_qty_out}')
+
+    if max_price is None:
+        spot_price_unitless = get_spot_price(w3, balancer, tok_in, tok_out, unitless=True)
+        max_price = int(spot_price_unitless * 1 / 0.09)
+        print(f'Max price not specified: using {max_price}')
+
+    min_qty_out_unitless = int(min_qty_out * 10 ** (tok_out.functions.decimals().call()))
+
+    tx_hash = balancer.functions.swapExactAmountIn(
+        tok_in.address, qty_in_unitless,
+        tok_out.address, min_qty_out_unitless,
+        max_price
+    ).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    return tx_hash
+
+def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=False):
+    """Get spot price for tok_out in terms of number of tok_in required to purchase
+    NB: copied from setup_testnet_pool
+
+    :param w3: Web3 connection
+    :param balancer: Web3 contract for pool
+    :param tok_in: Web3 contract for input token e.g. ltok to sell Long position to pool
+    :param tok_out: Web3 contract for output token e.g. ctok to receive Collateral token
+    :param unitless: default True, if False amount is scaled by token decimals
+    :param include_fee: default True, if False ignore swap fees
+    :return: number of input tokens required for each output token
+        e.g. if price is $50 per long token then
+            spot price  ctok -> ltok = 50 ($50 required for 1 LTK)
+                        ltok -> ctok = 0.02 (0.02 LTK (20kg) required for $1)
+    """
+    # Spot price is number of tok_in required for 1 tok_out (unitless)
+    if include_fee:
+        spot_price = balancer.functions.getSpotPrice(
+            tok_in.address, tok_out.address
+        ).call()
+    else:
+        spot_price = balancer.functions.getSpotPriceSansFee(
+            tok_in.address, tok_out.address
+        ).call()
+    if not unitless:
+        # Take decimals into account
+        spot_price = spot_price * 10 ** (
+                tok_out.functions.decimals().call()
+                - tok_in.functions.decimals().call()
+                - 18)
+    return spot_price
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
@@ -494,13 +563,13 @@ if __name__ == '__main__':
         raise ValueError(f'Unknown action: {args.action}')
 
     reporter = BalanceReporter(
-        w3, deployed_contracts['Coin'], deployed_contracts['Long'], deployed_contracts['Short'], deployed_contracts['YVault'])
+        w3, deployed_contracts['Long'], deployed_contracts['Long'], deployed_contracts['Short'], deployed_contracts['YVault'])
 
     y_vault = deployed_contracts['YVault']
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     # Print user balance
     if args.network == 'local':
-        reporter.print_balances(admin.address, 'admin')
+        reporter.print_balances(admin, 'admin')
     else:
         reporter.print_balances(admin, 'admin')
