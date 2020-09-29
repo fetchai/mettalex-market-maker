@@ -365,13 +365,13 @@ contract StrategyBalancerMettalex {
         uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
 
         // Get Strategy token balances
-        uint256 starategyWant = wantAfterMint;
+        uint256 strategyWant = wantAfterMint;
         uint256 strategyLtk = IERC20(long_token).balanceOf(address(this));
         uint256 strategyStk = IERC20(short_token).balanceOf(address(this));
 
         // Approve transfer to balancer pool
         IERC20(want).safeApprove(balancer, 0);
-        IERC20(want).safeApprove(balancer, starategyWant);
+        IERC20(want).safeApprove(balancer, strategyWant);
         IERC20(long_token).safeApprove(balancer, 0);
         IERC20(long_token).safeApprove(balancer, strategyLtk);
         IERC20(short_token).safeApprove(balancer, 0);
@@ -382,7 +382,7 @@ contract StrategyBalancerMettalex {
         uint256[3] memory bal;
         bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
-        bal[2] = starategyWant.add(balancerWant);
+        bal[2] = strategyWant.add(balancerWant);
         uint256[3] memory wt = calcDenormWeights(bal);
 
         Balancer bPool = Balancer(balancer);
@@ -394,7 +394,7 @@ contract StrategyBalancerMettalex {
         if (isStkBound != true && isLtkBound != true && isWantBound != true) {
             bPool.bind(short_token, strategyStk.add(balancerStk), wt[0]);
             bPool.bind(long_token, strategyLtk.add(balancerLtk), wt[1]);
-            bPool.bind(want, starategyWant.add(balancerWant), wt[2]);
+            bPool.bind(want, strategyWant.add(balancerWant), wt[2]);
         } else {
             int256[3] memory delta;
             address[3] memory tokens = [short_token, long_token, want];

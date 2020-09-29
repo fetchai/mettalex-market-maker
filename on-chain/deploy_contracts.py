@@ -287,6 +287,31 @@ def deploy_upgradeable_strategy(w3, y_controller, *args):
     return strategy
 
 
+def upgrade_strategy(w3, strategy, y_controller, *args):
+    contract_dir = Path(__file__).parent / 'pool-controller'
+    current_dir = os.getcwd()
+    os.chdir(contract_dir)
+    acct = w3.eth.defaultAccount
+
+    id = w3.eth.chainId
+    network = 'development'
+    if id == 42:
+        network = 'kovan'
+
+    cmd_str = ' '.join(
+        ['npx', 'oz', 'upgrade', '-n', network, '--init', 'initialize',
+         strategy.address,  # 'StrategyBalancerMettalex',
+         '--args', y_controller.address] + [arg.address for arg in args],
+    )
+    print(cmd_str)
+
+    result = subprocess.run(cmd_str.split(), capture_output=True)
+    os.chdir(current_dir)
+    print(result.stderr.decode('utf-8'))
+    strategy = connect_strategy(w3, strategy.address)
+    return strategy
+
+
 def connect_strategy(w3, address):
     build_file = Path(__file__).parent / 'pool-controller' / \
         'build' / 'contracts' / 'StrategyBalancerMettalex.json'
