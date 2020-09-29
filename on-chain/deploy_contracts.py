@@ -569,7 +569,4 @@ if __name__ == '__main__':
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     # Print user balance
-    if args.network == 'local':
-        reporter.print_balances(admin, 'admin')
-    else:
-        reporter.print_balances(admin, 'admin')
+    reporter.print_balances(admin, 'admin')
