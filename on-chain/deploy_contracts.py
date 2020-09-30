@@ -250,6 +250,35 @@ def deploy(w3, contracts, cache_file='contract_cache.json'):
     return deployed_contracts
 
 
+def deploy_market(w3, contracts, market):
+    """Deploy position tokens and mettlex vault for new market
+
+    :param w3:
+    :param contracts:
+    :return:
+    """
+    # Unpack market description
+    commodity = market['name']
+    symbol = market['symbol']
+    coin_address = market['coin']
+    tok_version = market['version']
+
+    # coin = deploy_contract(w3, contracts['Coin'], 'Tether USD', 'USDT', 18)
+    vault_name = f'{commodity} Vault'
+    ltok_name = f'{commodity} Long'
+    stok_name = f'{commodity} Short'
+    position_decimals = 5
+
+    ltk = deploy_contract(
+        w3, contracts['Long'], ltok_name, f'{symbol}LONG', position_decimals, tok_version)
+    stk = deploy_contract(
+        w3, contracts['Short'], stok_name, f'{symbol}SHORT', position_decimals, tok_version)
+    # vault = deploy_contract(
+    #     w3, contracts['Vault'],
+    #     commodity, tok_version, coin.address, ltk.address, stk.address,
+    #     acct, balancer.address, 3000000, 2000000, 100000000, 300
+    # )
+
 def create_balancer_pool(w3, pool_contract, balancer_factory):
     acct = w3.eth.defaultAccount
     tx_hash = balancer_factory.functions.newBPool().transact(
@@ -430,12 +459,20 @@ def print_mettalex_vault(w3, contracts, address=None):
     vault_floor = vault.functions.priceFloor().call()
     vault_cap = vault.functions.priceCap().call()
     collateral_per_unit = vault.functions.collateralPerUnit().call()
+    vault_spot = vault.functions.priceSpot().call()
     print(f'{name}')
+    print(f'Coin: {coin_address}')
+    print(f'Long: {ltok_address}')
+    print(f'Short: {stok_address}')
+    print(f'Vault: {vault.address}')
     print(f'Floor: {vault_floor}, Cap: {vault_cap} -> Collateral Per Unit {collateral_per_unit}')
     coin_dp = coin.functions.decimals().call()
     ltok_dp = ltok.functions.decimals().call()
     cpu_ticks = collateral_per_unit * 10**(ltok_dp - coin_dp)
     print(f'Dollar value of 1 position token pair = {cpu_ticks}')
+    print(f'Current spot price: {vault_spot}')
+    print(f'Long token spot price: {vault_spot - vault_floor}')
+    print(f'Short token spot price: {vault_cap - vault_spot}')
 
 
 class BalanceReporter(object):
