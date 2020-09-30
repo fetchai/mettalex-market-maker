@@ -327,10 +327,11 @@ def upgrade_strategy(w3, strategy, y_controller, *args):
     if id == 42:
         network = 'kovan'
 
+    addresses = ','.join([y_controller.address] + [arg.address for arg in args])
     cmd_str = ' '.join(
         ['npx', 'oz', 'upgrade', '-n', network, '--init', 'initialize',
          strategy.address,  # 'StrategyBalancerMettalex',
-         '--args', y_controller.address] + [arg.address for arg in args],
+         '--args', addresses]
     )
     print(cmd_str)
 
@@ -441,7 +442,7 @@ def set_price(w3, vault, price):
     print(f'{vault_name} spot changed from {old_spot} to {new_spot}')
 
 
-def print_mettalex_vault(w3, contracts, address=None):
+def get_vault_details(w3, contracts, address=None):
     vault_contract = contracts['Vault']
     if address is None:
         address = vault_contract.address
@@ -460,19 +461,35 @@ def print_mettalex_vault(w3, contracts, address=None):
     vault_cap = vault.functions.priceCap().call()
     collateral_per_unit = vault.functions.collateralPerUnit().call()
     vault_spot = vault.functions.priceSpot().call()
-    print(f'{name}')
-    print(f'Coin: {coin_address}')
-    print(f'Long: {ltok_address}')
-    print(f'Short: {stok_address}')
-    print(f'Vault: {vault.address}')
-    print(f'Floor: {vault_floor}, Cap: {vault_cap} -> Collateral Per Unit {collateral_per_unit}')
-    coin_dp = coin.functions.decimals().call()
-    ltok_dp = ltok.functions.decimals().call()
-    cpu_ticks = collateral_per_unit * 10**(ltok_dp - coin_dp)
+    vault_details = {
+        'vault': vault,
+        'coin': coin,
+        'ltok': ltok,
+        'stok': stok,
+        'name': name,
+        'floor': vault_floor,
+        'cap': vault_cap,
+        'spot': vault_spot,
+        'cpu': collateral_per_unit
+    }
+    return vault_details
+
+def print_mettalex_vault(w3, contracts, address=None):
+    res = get_vault_details(w3, contracts, address)
+
+    print(f'{res["name"]}')
+    print(f'Coin: {res["coin"].address}')
+    print(f'Long: {res["ltok"].address}')
+    print(f'Short: {res["stok"].address}')
+    print(f'Vault: {res["vault"].address}')
+    print(f'Floor: {res["floor"]}, Cap: {res["cap"]} -> Collateral Per Unit {res["cpu"]}')
+    coin_dp = res["coin"].functions.decimals().call()
+    ltok_dp = res["ltok"].functions.decimals().call()
+    cpu_ticks = res["cpu"] * 10**(ltok_dp - coin_dp)
     print(f'Dollar value of 1 position token pair = {cpu_ticks}')
-    print(f'Current spot price: {vault_spot}')
-    print(f'Long token spot price: {vault_spot - vault_floor}')
-    print(f'Short token spot price: {vault_cap - vault_spot}')
+    print(f'Current spot price: {res["spot"]}')
+    print(f'Long token spot price: {res["spot"] - res["floor"]}')
+    print(f'Short token spot price: {res["cap"] - res["spot"]}')
 
 
 class BalanceReporter(object):
