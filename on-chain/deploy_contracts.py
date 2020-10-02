@@ -311,11 +311,12 @@ def deploy_upgradeable_strategy(w3, y_controller, *args):
          'StrategyBalancerMettalex', addresses]
     )
     print(cmd_str)
-    result = subprocess.run(
-        ['npx', 'oz', 'deploy', '-n', network, '-k', 'upgradeable', '-f', acct,
-         'StrategyBalancerMettalex', y_controller.address] + [arg.address for arg in args],
-        capture_output=True
-    )
+    result = subprocess.run(cmd_str.split(), capture_output=True)
+    # result = subprocess.run(
+    #     ['npx', 'oz', 'deploy', '-n', network, '-k', 'upgradeable', '-f', acct,
+    #      'StrategyBalancerMettalex', y_controller.address] + [arg.address for arg in args],
+    #     capture_output=True
+    # )
     strategy_address = result.stdout.strip().decode('utf-8')
     os.chdir(current_dir)
     strategy = connect_strategy(w3, strategy_address)
@@ -360,19 +361,26 @@ def connect_strategy(w3, address):
     return strategy
 
 
-def full_setup(w3, admin):
-    deployed_contracts = deploy(w3, contracts)
+def full_setup(w3, admin, deployed_contracts=None):
+    if deployed_contracts is None:
+        print('Deploying contracts')
+        deployed_contracts = deploy(w3, contracts)
+    print('Whitelisting Mettalex vault to mint position tokens')
     whitelist_vault(
         w3, deployed_contracts['Vault'], deployed_contracts['Long'], deployed_contracts['Short'])
+    print('Setting strategy')
     set_strategy(
         w3, deployed_contracts['YController'], deployed_contracts['Coin'], deployed_contracts['PoolController'])
+    print('Setting y-vault controller')
     set_yvault_controller(
         w3, deployed_contracts['YController'], deployed_contracts['YVault'].address, deployed_contracts['Coin'].address)
+    print('Setting balancer controller')
     set_balancer_controller(
         w3, deployed_contracts['BPool'], deployed_contracts['PoolController'])
+    print('Setting Mettalex vault AMM')
     set_autonomous_market_maker(
         w3, deployed_contracts['Vault'], deployed_contracts['PoolController'])  # Zero fees for AMM
-    set_price(w3, deployed_contracts['Vault'], 2500000)
+    # set_price(w3, deployed_contracts['Vault'], 2500000)
     return w3, admin, deployed_contracts
 
 
@@ -426,12 +434,12 @@ def set_balancer_controller(w3, balancer, strategy, controller_address=None):
 
 def set_autonomous_market_maker(w3, vault, strategy):
     acct = w3.eth.defaultAccount
-    old_amm = vault.functions.automatedMarketMaker().call()
-    tx_hash = vault.functions.updateAutomatedMarketMaker(strategy.address).transact(
+    old_amm = vault.functions.ammPoolController().call()
+    tx_hash = vault.functions.updateAMMPoolController(strategy.address).transact(
         {'from': acct, 'gas': 1_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-    new_amm = vault.functions.automatedMarketMaker().call()
+    new_amm = vault.functions.ammPoolController().call()
     vault_name = vault.functions.contractName().call()
     print(f'{vault_name} strategy changed from {old_amm} to {new_amm}')
 
