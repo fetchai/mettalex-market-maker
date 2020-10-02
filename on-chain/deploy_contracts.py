@@ -305,6 +305,12 @@ def deploy_upgradeable_strategy(w3, y_controller, *args):
     network = 'development'
     if id == 42:
         network = 'kovan'
+    addresses = ','.join([y_controller.address] + [arg.address for arg in args])
+    cmd_str = ' '.join(
+        ['npx', 'oz', 'deploy', '-n', network, '-k', 'upgradeable', '-f', acct,
+         'StrategyBalancerMettalex', addresses]
+    )
+    print(cmd_str)
     result = subprocess.run(
         ['npx', 'oz', 'deploy', '-n', network, '-k', 'upgradeable', '-f', acct,
          'StrategyBalancerMettalex', y_controller.address] + [arg.address for arg in args],
@@ -648,4 +654,4 @@ if __name__ == '__main__':
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     # Print user balance
-    reporter.print_balances(admin, 'admin')
+    # reporter.print_balances(admin, 'admin')
