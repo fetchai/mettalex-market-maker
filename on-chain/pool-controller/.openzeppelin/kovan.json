@@ -1,7 +1,7 @@
 {
   "contracts": {
     "StrategyBalancerMettalex": {
-      "address": "0xc85F37aCe390Ed6e5677Afae259c5E6C211bf882",
+      "address": "0x4bA483276C3BE67659c500be0EDb9A30DaF712E6",
       "constructorCode": "608060405234801561001057600080fd5b50614012806100206000396000f3fe",
       "bodyBytecodeHash": "9ddc8a8ea97144b709396a8da99c55cf1d9515e801aa5c58cdc03d0824479f21",
       "localBytecodeHash": "9c8c74faa1e5f456e89247639c7bebe2504ed718bb4c10d86f220973f4575a5d",
@@ -118,7 +118,9 @@
         "hasSelfDestruct": false,
         "hasDelegateCall": false,
         "hasInitialValuesInDeclarations": false,
-        "uninitializedBaseContracts": []
+        "uninitializedBaseContracts": [],
+        "storageUncheckedVars": [],
+        "storageDiff": []
       }
     }
   },
@@ -128,7 +130,7 @@
       {
         "address": "0xea4752d0F6d577810faf798E0A9ECb9E91c34cFF",
         "version": "0.1.0",
-        "implementation": "0xc85F37aCe390Ed6e5677Afae259c5E6C211bf882",
+        "implementation": "0x4bA483276C3BE67659c500be0EDb9A30DaF712E6",
         "admin": "0xb7691c157878F3e75243a9D02CFe6091CA8b52b8",
         "kind": "Upgradeable"
       }
