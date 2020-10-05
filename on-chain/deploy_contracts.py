@@ -268,7 +268,9 @@ class OpenZeppelinCache(object):
         self.address = address
         self.oz_file = Path(
         __file__).parent / 'pool-controller' / 'openzeppelin' / 'kovan.json'
-        self.cache_file = f'strategy_{network}_{address}.json'
+        if not os.path.isdir('cache'):
+            os.mkdir('cache')
+        self.cache_file = os.path.join('cache', f'strategy_{network}_{address}.json')
 
     def write(self):
         shutil.copy(self.oz_file, self.cache_file)
