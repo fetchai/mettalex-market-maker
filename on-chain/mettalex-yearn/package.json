@@ -1,7 +1,6 @@
 {
   "name": "mettalex-yearn",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -12,5 +11,6 @@
   "dependencies": {
     "@openzeppelin/cli": "^2.8.2",
     "@openzeppelin/contracts": "^2.5.1"
-  }
+  },
+  "description": ""
 }

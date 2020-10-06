@@ -13,5 +13,5 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "The hierarchical pool controller strategy is used to manage liquidity in multiple balancer pools which will be used as market maker for different commodities."
 }

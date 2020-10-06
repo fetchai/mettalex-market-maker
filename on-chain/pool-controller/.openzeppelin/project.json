@@ -1,15 +1,13 @@
 {
   "manifestVersion": "2.2",
-  "contracts": {
-    "StrategyBalancerMettalex": "StrategyBalancerMettalex"
-  },
+  "contracts": {},
   "dependencies": {},
   "name": "pool-controller",
   "version": "0.1.0",
   "compiler": {
     "compilerSettings": {
       "optimizer": {
-        "enabled": true,
+        "enabled": false,
         "runs": "200"
       }
     },
