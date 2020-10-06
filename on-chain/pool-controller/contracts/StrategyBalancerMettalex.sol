@@ -455,6 +455,29 @@ contract StrategyBalancerMettalex {
         IERC20(_token).safeTransfer(controller, balance);
     }
 
+    // Withdraw all funds, normally used when migrating strategies
+    function withdrawAll() external returns (uint256 balance) {
+        require(msg.sender == controller, "!controller");
+        _withdrawAll();
+
+        balance = IERC20(want).balanceOf(address(this));
+
+        address _vault = Controller(controller).vaults(want);
+
+        // additional protection so we don't burn the funds
+        require(_vault != address(0), "!vault");
+        IERC20(want).safeTransfer(_vault, balance);
+    }
+
+    function _withdrawAll() internal {
+        Balancer bPool = Balancer(balancer);
+
+        // Unbind tokens from Balancer pool
+        bPool.setPublicSwap(false);
+        unbind();
+        redeemPositions();
+    }
+
     // Update Contract addresses after breach
     function updateCommodityAfterBreach(
         address _vault,
