@@ -445,6 +445,16 @@ contract StrategyBalancerMettalex {
         supply = supply.sub(_amount);
     }
 
+    // Controller only function for creating additional rewards from dust
+    function withdraw(address _token) external returns (uint256 balance) {
+        require(msg.sender == controller, "!controller");
+        require(breaker == false, "!breaker");
+        require(want != address(_token), "want");
+
+        balance = IERC20(_token).balanceOf(address(this));
+        IERC20(_token).safeTransfer(controller, balance);
+    }
+
     // Update Contract addresses after breach
     function updateCommodityAfterBreach(
         address _vault,
