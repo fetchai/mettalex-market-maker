@@ -267,7 +267,7 @@ class OpenZeppelinCache(object):
         self.network = network
         self.address = address
         self.oz_file = Path(
-        __file__).parent / 'pool-controller' / 'openzeppelin' / 'kovan.json'
+        __file__).parent / 'pool-controller' / '.openzeppelin' / 'kovan.json'
         if not os.path.isdir('cache'):
             os.mkdir('cache')
         self.cache_file = os.path.join('cache', f'strategy_{network}_{address}.json')
