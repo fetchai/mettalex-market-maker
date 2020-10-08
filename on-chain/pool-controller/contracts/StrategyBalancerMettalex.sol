@@ -95,6 +95,13 @@ contract StrategyBalancerMettalex {
         breaker = _breaker;
     }
 
+    function updatePoolController(address _controller) public {
+        require(msg.sender == governance, "!governance");
+
+        Balancer bPool = Balancer(balancer);
+        bPool.setController(_controller);
+    }
+
     function _unbind() internal {
         // Unbind tokens from Balancer pool
         Balancer bPool = Balancer(balancer);
