@@ -445,6 +445,60 @@ contract StrategyBalancerMettalex {
         supply = supply.sub(_amount);
     }
 
+    // Controller only function for creating additional rewards from dust
+    function withdraw(address _token) external returns (uint256 balance) {
+        require(msg.sender == controller, "!controller");
+        require(breaker == false, "!breaker");
+        require(address(_token) != want, "Want");
+        require(address(_token) != long_token, "LTOK");
+        require(address(_token) != short_token, "STOK");
+
+        balance = IERC20(_token).balanceOf(address(this));
+        IERC20(_token).safeTransfer(controller, balance);
+    }
+
+    // Withdraw all funds, normally used when migrating strategies
+    function withdrawAll() external returns (uint256 balance) {
+        require(msg.sender == controller, "!controller");
+
+        _withdrawAll();
+
+        balance = IERC20(want).balanceOf(address(this));
+        address _vault = Controller(controller).vaults(want);
+
+        uint256 ltkDust = IERC20(long_token).balanceOf(address(this));
+        uint256 stkDust = IERC20(short_token).balanceOf(address(this));
+
+        // additional protection so we don't burn the funds
+        require(_vault != address(0), "!vault");
+        IERC20(want).safeTransfer(_vault, balance);
+
+        IERC20(long_token).safeTransfer(controller, ltkDust);
+        IERC20(short_token).safeTransfer(controller, stkDust);
+    }
+
+    function _withdrawAll() internal {
+        Balancer bPool = Balancer(balancer);
+
+        // Unbind tokens from Balancer pool
+        bPool.setPublicSwap(false);
+
+        uint256 _before = IERC20(want).balanceOf(address(this));
+
+        unbind();
+        redeemPositions();
+
+        uint256 _after = IERC20(want).balanceOf(address(this));
+
+        uint256 _diff = _after.sub(_before);
+        if (_diff > supply) {
+            // Pool made too much profit, so we reset to 0 to avoid revert
+            supply = 0;
+        } else {
+            supply = supply.sub(_after.sub(_before));
+        }
+    }
+
     // Update Contract addresses after breach
     function updateCommodityAfterBreach(
         address _vault,
