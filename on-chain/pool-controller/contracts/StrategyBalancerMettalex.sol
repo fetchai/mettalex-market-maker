@@ -53,9 +53,6 @@ contract StrategyBalancerMettalex {
     uint256 public supply; // = 0;
     bool public isBreachHandled;
 
-    // OpenZeppelin SDK upgradeable contract
-    bool private initialized;
-
     modifier notSettled {
         MettalexVault mVault = MettalexVault(mettalex_vault);
         require(!mVault.isSettled(), "mVault is already settled");
@@ -74,22 +71,7 @@ contract StrategyBalancerMettalex {
         }
     }
 
-    function initialize(address _controller) public {
-        // Single argument init method for use with ganache-cli --deterministic
-        // and contracts created in a set order
-        require(!initialized, "Already initialized");
-        want = address(0xCfEB869F69431e42cdB54A4F4f105C19C080A601);
-        balancer = address(0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78);
-        mettalex_vault = address(0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb);
-        long_token = address(0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B);
-        short_token = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
-        governance = msg.sender;
-        controller = _controller;
-        breaker = false;
-        supply = 0;
-    }
-
-    function initialize(
+    constructor(
         address _controller,
         address _want,
         address _balancer,
@@ -97,8 +79,6 @@ contract StrategyBalancerMettalex {
         address _long_token,
         address _short_token
     ) public {
-        // General initializer
-        require(!initialized, "Already initialized");
         want = _want;
         balancer = _balancer;
         mettalex_vault = _mettalex_vault;
@@ -110,18 +90,19 @@ contract StrategyBalancerMettalex {
         supply = 0;
     }
 
-    // Constructor is removed when using the OpenZeppelin SDK for upgradeable contracts
-    //    constructor(address _controller) public {
-    //        governance = msg.sender;
-    //        controller = _controller;
-    //    }
-
     function setBreaker(bool _breaker) public {
         require(msg.sender == governance, "!governance");
         breaker = _breaker;
     }
 
-    function unbind() internal {
+    function updatePoolController(address _controller) public {
+        require(msg.sender == governance, "!governance");
+
+        Balancer bPool = Balancer(balancer);
+        bPool.setController(_controller);
+    }
+
+    function _unbind() internal {
         // Unbind tokens from Balancer pool
         Balancer bPool = Balancer(balancer);
         address[] memory tokens = bPool.getCurrentTokens();
@@ -130,7 +111,7 @@ contract StrategyBalancerMettalex {
         }
     }
 
-    function settle() internal settled {
+    function _settle() internal settled {
         MettalexVault mVault = MettalexVault(mettalex_vault);
         mVault.settlePositions();
     }
@@ -138,7 +119,6 @@ contract StrategyBalancerMettalex {
     // Settle all Long and Short tokens held by the contract in case of Commodity breach
     // should be called only once
     function handleBreach() public settled callOnce {
-        // TO-DO: Understand requirement and remove/keep this check
         require(breaker == false, "!breaker");
 
         isBreachHandled = true;
@@ -149,11 +129,11 @@ contract StrategyBalancerMettalex {
         bPool.setPublicSwap(false);
 
         // Unbind tokens from Balancer pool
-        unbind();
-        settle();
+        _unbind();
+        _settle();
     }
 
-    function redeemPositions() internal {
+    function _redeemPositions() internal {
         MettalexVault mVault = MettalexVault(mettalex_vault);
         uint256 ltk_qty = IERC20(long_token).balanceOf(address(this));
         uint256 stk_qty = IERC20(short_token).balanceOf(address(this));
@@ -180,7 +160,7 @@ contract StrategyBalancerMettalex {
         uint256 d;
     }
 
-    function calcDenormWeights(uint256[3] memory bal)
+    function _calcDenormWeights(uint256[3] memory bal)
         internal
         view
         returns (uint256[3] memory wt)
@@ -237,7 +217,7 @@ contract StrategyBalancerMettalex {
         bal[0] = balancerStk;
         bal[1] = balancerLtk;
         bal[2] = balancerWant;
-        uint256[3] memory newWt = calcDenormWeights(bal);
+        uint256[3] memory newWt = _calcDenormWeights(bal);
 
         address[3] memory tokens = [short_token, long_token, want];
 
@@ -256,10 +236,10 @@ contract StrategyBalancerMettalex {
             int256(bPool.getDenormalizedWeight(tokens[2]))
         );
 
-        sortAndRebind(delta, newWt, bal, tokens);
+        _sortAndRebind(delta, newWt, bal, tokens);
     }
 
-    function sortAndRebind(
+    function _sortAndRebind(
         int256[3] memory delta,
         uint256[3] memory wt,
         uint256[3] memory balance,
@@ -326,6 +306,7 @@ contract StrategyBalancerMettalex {
     }
 
     function deposit() external notSettled {
+        require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
         Balancer bPool = Balancer(balancer);
 
@@ -365,13 +346,13 @@ contract StrategyBalancerMettalex {
         uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
 
         // Get Strategy token balances
-        uint256 starategyWant = wantAfterMint;
+        uint256 strategyWant = wantAfterMint;
         uint256 strategyLtk = IERC20(long_token).balanceOf(address(this));
         uint256 strategyStk = IERC20(short_token).balanceOf(address(this));
 
         // Approve transfer to balancer pool
         IERC20(want).safeApprove(balancer, 0);
-        IERC20(want).safeApprove(balancer, starategyWant);
+        IERC20(want).safeApprove(balancer, strategyWant);
         IERC20(long_token).safeApprove(balancer, 0);
         IERC20(long_token).safeApprove(balancer, strategyLtk);
         IERC20(short_token).safeApprove(balancer, 0);
@@ -382,8 +363,8 @@ contract StrategyBalancerMettalex {
         uint256[3] memory bal;
         bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
-        bal[2] = starategyWant.add(balancerWant);
-        uint256[3] memory wt = calcDenormWeights(bal);
+        bal[2] = strategyWant.add(balancerWant);
+        uint256[3] memory wt = _calcDenormWeights(bal);
 
         Balancer bPool = Balancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
@@ -391,22 +372,26 @@ contract StrategyBalancerMettalex {
         bool isStkBound = bPool.isBound(short_token);
         bool isLtkBound = bPool.isBound(long_token);
 
-        if (isStkBound == true) {
-            bPool.rebind(short_token, strategyStk.add(balancerStk), wt[0]);
-        } else {
+        if (isStkBound != true && isLtkBound != true && isWantBound != true) {
             bPool.bind(short_token, strategyStk.add(balancerStk), wt[0]);
-        }
-
-        if (isLtkBound == true) {
-            bPool.rebind(long_token, strategyLtk.add(balancerLtk), wt[1]);
-        } else {
             bPool.bind(long_token, strategyLtk.add(balancerLtk), wt[1]);
-        }
-
-        if (isWantBound == true) {
-            bPool.rebind(want, starategyWant.add(balancerWant), wt[2]);
+            bPool.bind(want, strategyWant.add(balancerWant), wt[2]);
         } else {
-            bPool.bind(want, starategyWant.add(balancerWant), wt[2]);
+            int256[3] memory delta;
+            address[3] memory tokens = [short_token, long_token, want];
+
+            // Max denorm value is compatible with int256
+            delta[0] = int256(wt[0]).sub(
+                int256(bPool.getDenormalizedWeight(tokens[0]))
+            );
+            delta[1] = int256(wt[1]).sub(
+                int256(bPool.getDenormalizedWeight(tokens[1]))
+            );
+            delta[2] = int256(wt[2]).sub(
+                int256(bPool.getDenormalizedWeight(tokens[2]))
+            );
+
+            _sortAndRebind(delta, wt, bal, tokens);
         }
     }
 
@@ -426,9 +411,9 @@ contract StrategyBalancerMettalex {
             // Unbind tokens from Balancer pool
             bPool.setPublicSwap(false);
 
-            unbind();
+            _unbind();
 
-            redeemPositions();
+            _redeemPositions();
 
             // Transfer out required funds to yVault.
             IERC20(want).transfer(Controller(controller).vaults(want), _amount);
@@ -439,6 +424,60 @@ contract StrategyBalancerMettalex {
         }
 
         supply = supply.sub(_amount);
+    }
+
+    // Controller only function for creating additional rewards from dust
+    function withdraw(address _token) external returns (uint256 balance) {
+        require(msg.sender == controller, "!controller");
+        require(breaker == false, "!breaker");
+        require(address(_token) != want, "Want");
+        require(address(_token) != long_token, "LTOK");
+        require(address(_token) != short_token, "STOK");
+
+        balance = IERC20(_token).balanceOf(address(this));
+        IERC20(_token).safeTransfer(controller, balance);
+    }
+
+    // Withdraw all funds, normally used when migrating strategies
+    function withdrawAll() external returns (uint256 balance) {
+        require(msg.sender == controller, "!controller");
+
+        _withdrawAll();
+
+        balance = IERC20(want).balanceOf(address(this));
+        address _vault = Controller(controller).vaults(want);
+
+        uint256 ltkDust = IERC20(long_token).balanceOf(address(this));
+        uint256 stkDust = IERC20(short_token).balanceOf(address(this));
+
+        // additional protection so we don't burn the funds
+        require(_vault != address(0), "!vault");
+        IERC20(want).safeTransfer(_vault, balance);
+
+        IERC20(long_token).safeTransfer(controller, ltkDust);
+        IERC20(short_token).safeTransfer(controller, stkDust);
+    }
+
+    function _withdrawAll() internal {
+        Balancer bPool = Balancer(balancer);
+
+        // Unbind tokens from Balancer pool
+        bPool.setPublicSwap(false);
+
+        uint256 _before = IERC20(want).balanceOf(address(this));
+
+        _unbind();
+        _redeemPositions();
+
+        uint256 _after = IERC20(want).balanceOf(address(this));
+
+        uint256 _diff = _after.sub(_before);
+        if (_diff > supply) {
+            // Pool made too much profit, so we reset to 0 to avoid revert
+            supply = 0;
+        } else {
+            supply = supply.sub(_after.sub(_before));
+        }
     }
 
     // Update Contract addresses after breach

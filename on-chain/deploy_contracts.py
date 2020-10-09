@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 import json
 import argparse
+import shutil
 
 
 def read_config():
@@ -153,12 +154,7 @@ def connect_deployed(w3, contracts, contract_file='contract_address.json', cache
     with open(contract_file, 'r') as f:
         contract_cache = json.load(f)
 
-    id = w3.eth.chainId
-    network = 'local'
-    if id == 42:
-        network = 'kovan'
-    elif id == 97:
-        network = 'bsc-testnet'
+    network = get_network(w3)
 
     deployed_contracts = {}
 
@@ -181,8 +177,8 @@ def connect_deployed(w3, contracts, contract_file='contract_address.json', cache
                     w3, contracts[k], contract_cache['Coin'], contract_cache['YController'])
 
             elif k == 'PoolController':
-                deployed_contracts[k] = deploy_upgradeable_strategy(
-                    w3, deployed_contracts['YController'], deployed_contracts['Coin'], deployed_contracts['BPool'], deployed_contracts['Vault'], deployed_contracts['Long'], deployed_contracts['Short'])
+                deployed_contracts[k] = deploy_contract(
+                    w3, contracts[k], contract_cache['YController'], contract_cache['Coin'], contract_cache['BPool'], contract_cache['Vault'], contract_cache['Long'], contract_cache['Short'])
             else:
                 deployed_contracts[k] = deploy_contract(
                     w3, contracts[k], *args[network][k])
@@ -212,16 +208,9 @@ def deploy(w3, contracts, cache_file='contract_cache.json'):
     y_vault = deploy_contract(
         w3, contracts['YVault'], coin.address, y_controller.address)
 
-    # Use OpenZeppelin CLI to deploy upgradeable contract for ease of development
-    strategy = deploy_upgradeable_strategy(
-        w3,
-        y_controller,
-        coin,
-        balancer,
-        vault,
-        ltk,
-        stk
-    )
+    strategy = deploy_contract(
+        w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address)
+
     contract_addresses = {
         'BFactory': balancer_factory.address,
         'BPool': balancer.address,
@@ -266,24 +255,36 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
     return balancer
 
 
-def deploy_upgradeable_strategy(w3, y_controller, *args):
-    contract_dir = Path(__file__).parent / 'pool-controller'
-    current_dir = os.getcwd()
-    os.chdir(contract_dir)
-    acct = w3.eth.defaultAccount
-
-    id = w3.eth.chainId
+def get_network(w3):
+    chain_id = w3.eth.chainId
     network = 'development'
-    if id == 42:
+    if chain_id == 42:
         network = 'kovan'
-    result = subprocess.run(
-        ['npx', 'oz', 'deploy', '-n', network, '-k', 'upgradeable', '-f', acct,
-         'StrategyBalancerMettalex', y_controller.address] + [arg.address for arg in args],
-        capture_output=True
+    elif chain_id == 95:
+        network = 'bsc-testnet'
+    return network
+
+
+def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vault, ltk, stk):
+    # deploy new strategy
+    new_strategy = deploy_contract(
+        w3,
+        contracts['PoolController'],
+        y_controller.address,
+        coin.address,
+        balancer.address,
+        vault.address,
+        ltk.address,
+        stk.address
     )
-    strategy_address = result.stdout.strip().decode('utf-8')
-    os.chdir(current_dir)
-    strategy = connect_strategy(w3, strategy_address)
+
+    # setStrategy
+    set_strategy(w3, y_controller, coin, new_strategy)
+
+    # update pool controller from old strategy
+    update_pool_controller(w3, balancer, strategy, new_strategy)
+
+    strategy = connect_strategy(w3, new_strategy.address)
     return strategy
 
 
@@ -299,19 +300,28 @@ def connect_strategy(w3, address):
     return strategy
 
 
-def full_setup(w3, admin):
-    deployed_contracts = deploy(w3, contracts)
+def full_setup(w3, admin, deployed_contracts=None, price=None):
+    if deployed_contracts is None:
+        print('Deploying contracts')
+        deployed_contracts = deploy(w3, contracts)
+    print('Whitelisting Mettalex vault to mint position tokens')
     whitelist_vault(
         w3, deployed_contracts['Vault'], deployed_contracts['Long'], deployed_contracts['Short'])
+    print('Setting strategy')
     set_strategy(
         w3, deployed_contracts['YController'], deployed_contracts['Coin'], deployed_contracts['PoolController'])
+    print('Setting y-vault controller')
     set_yvault_controller(
         w3, deployed_contracts['YController'], deployed_contracts['YVault'].address, deployed_contracts['Coin'].address)
+    print('Setting balancer controller')
     set_balancer_controller(
         w3, deployed_contracts['BPool'], deployed_contracts['PoolController'])
+    print('Setting Mettalex vault AMM')
     set_autonomous_market_maker(
         w3, deployed_contracts['Vault'], deployed_contracts['PoolController'])  # Zero fees for AMM
-    set_price(w3, deployed_contracts['Vault'], 2500000)
+    if price is not None:
+        # May be connecting to existing vault, if not then can set tht price here
+        set_price(w3, deployed_contracts['Vault'], price)
     return w3, admin, deployed_contracts
 
 
@@ -344,6 +354,17 @@ def set_strategy(w3, y_controller, tok, strategy):
     print(f'{tok_name} strategy changed from {old_strategy} to {new_strategy}')
 
 
+def update_pool_controller(w3, balancer, strategy, new_strategy):
+    acct = w3.eth.defaultAccount
+    old_balancer_controller = balancer.functions.getController().call()
+    tx_hash = strategy.functions.updatePoolController(new_strategy.address).transact({
+        'from': acct, 'gas': 1_000_000})
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    new_balancer_controller = balancer.functions.getController().call()
+    print(
+        f'BPool controller changed from {old_balancer_controller} to {new_balancer_controller}')
+
+
 def set_yvault_controller(w3, y_controller, y_vault_address, token_address):
     acct = w3.eth.defaultAccount
     tx_hash = y_controller.functions.setVault(
@@ -365,12 +386,12 @@ def set_balancer_controller(w3, balancer, strategy, controller_address=None):
 
 def set_autonomous_market_maker(w3, vault, strategy):
     acct = w3.eth.defaultAccount
-    old_amm = vault.functions.automatedMarketMaker().call()
-    tx_hash = vault.functions.updateAutomatedMarketMaker(strategy.address).transact(
+    old_amm = vault.functions.ammPoolController().call()
+    tx_hash = vault.functions.updateAMMPoolController(strategy.address).transact(
         {'from': acct, 'gas': 1_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-    new_amm = vault.functions.automatedMarketMaker().call()
+    new_amm = vault.functions.ammPoolController().call()
     vault_name = vault.functions.contractName().call()
     print(f'{vault_name} strategy changed from {old_amm} to {new_amm}')
 
@@ -387,7 +408,7 @@ def set_price(w3, vault, price):
     print(f'{vault_name} spot changed from {old_spot} to {new_spot}')
 
 
-def print_mettalex_vault(w3, contracts, address=None):
+def get_vault_details(w3, contracts, address=None):
     vault_contract = contracts['Vault']
     if address is None:
         address = vault_contract.address
@@ -405,12 +426,38 @@ def print_mettalex_vault(w3, contracts, address=None):
     vault_floor = vault.functions.priceFloor().call()
     vault_cap = vault.functions.priceCap().call()
     collateral_per_unit = vault.functions.collateralPerUnit().call()
-    print(f'{name}')
-    print(f'Floor: {vault_floor}, Cap: {vault_cap} -> Collateral Per Unit {collateral_per_unit}')
-    coin_dp = coin.functions.decimals().call()
-    ltok_dp = ltok.functions.decimals().call()
-    cpu_ticks = collateral_per_unit * 10**(ltok_dp - coin_dp)
+    vault_spot = vault.functions.priceSpot().call()
+    vault_details = {
+        'vault': vault,
+        'coin': coin,
+        'ltok': ltok,
+        'stok': stok,
+        'name': name,
+        'floor': vault_floor,
+        'cap': vault_cap,
+        'spot': vault_spot,
+        'cpu': collateral_per_unit
+    }
+    return vault_details
+
+
+def print_mettalex_vault(w3, contracts, address=None):
+    res = get_vault_details(w3, contracts, address)
+
+    print(f'{res["name"]}')
+    print(f'Coin: {res["coin"].address}')
+    print(f'Long: {res["ltok"].address}')
+    print(f'Short: {res["stok"].address}')
+    print(f'Vault: {res["vault"].address}')
+    print(
+        f'Floor: {res["floor"]}, Cap: {res["cap"]} -> Collateral Per Unit {res["cpu"]}')
+    coin_dp = res["coin"].functions.decimals().call()
+    ltok_dp = res["ltok"].functions.decimals().call()
+    cpu_ticks = res["cpu"] * 10**(ltok_dp - coin_dp)
     print(f'Dollar value of 1 position token pair = {cpu_ticks}')
+    print(f'Current spot price: {res["spot"]}')
+    print(f'Long token spot price: {res["spot"] - res["floor"]}')
+    print(f'Short token spot price: {res["cap"] - res["spot"]}')
 
 
 class BalanceReporter(object):
@@ -466,6 +513,94 @@ def earn(w3, y_vault):
     print(f'Liquidity supplied to AMM balancer. Earn Function Caller: {acct}')
 
 
+def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, min_qty_out=None, max_price=None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
+    print(
+        f'User: {acct} making a swap in balancer. Token_in: ${tok_in.functions.symbol().call()} Token_out: ${tok_out.functions.symbol().call()}')
+    qty_in_unitless = int(qty_in * 10 ** (tok_in.functions.decimals().call()))
+
+    if qty_in_unitless > tok_in.functions.allowance(acct, balancer.address).call():
+        tx_hash = tok_in.functions.approve(balancer.address, qty_in_unitless).transact(
+            {'from': acct, 'gas': 1_000_000}
+        )
+        tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    if min_qty_out is None:
+        # Default to allowing 10% slippage
+        spot_price = get_spot_price(
+            w3, balancer, tok_in, tok_out, unitless=False)
+        print('spot price is', spot_price)
+        min_qty_out = qty_in / spot_price * 0.9
+        print(
+            f'Minimum output token quantity not specified: using {min_qty_out}')
+
+    if max_price is None:
+        spot_price_unitless = get_spot_price(
+            w3, balancer, tok_in, tok_out, unitless=True)
+        max_price = int(spot_price_unitless * 1 / 0.09)
+        print(f'Max price not specified: using {max_price}')
+
+    min_qty_out_unitless = int(
+        min_qty_out * 10 ** (tok_out.functions.decimals().call()))
+
+    tx_hash = balancer.functions.swapExactAmountIn(
+        tok_in.address, qty_in_unitless,
+        tok_out.address, min_qty_out_unitless,
+        max_price
+    ).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    return tx_hash
+
+
+def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=False):
+    """Get spot price for tok_out in terms of number of tok_in required to purchase
+    NB: copied from setup_testnet_pool
+
+    :param w3: Web3 connection
+    :param balancer: Web3 contract for pool
+    :param tok_in: Web3 contract for input token e.g. ltok to sell Long position to pool
+    :param tok_out: Web3 contract for output token e.g. ctok to receive Collateral token
+    :param unitless: default True, if False amount is scaled by token decimals
+    :param include_fee: default True, if False ignore swap fees
+    :return: number of input tokens required for each output token
+        e.g. if price is $50 per long token then
+            spot price  ctok -> ltok = 50 ($50 required for 1 LTK)
+                        ltok -> ctok = 0.02 (0.02 LTK (20kg) required for $1)
+    """
+    # Spot price is number of tok_in required for 1 tok_out (unitless)
+    if include_fee:
+        spot_price = balancer.functions.getSpotPrice(
+            tok_in.address, tok_out.address
+        ).call()
+    else:
+        spot_price = balancer.functions.getSpotPriceSansFee(
+            tok_in.address, tok_out.address
+        ).call()
+    if not unitless:
+        # Take decimals into account
+        spot_price = spot_price * 10 ** (
+            tok_out.functions.decimals().call()
+            - tok_in.functions.decimals().call()
+            - 18)
+    return spot_price
+
+
+def withdraw(w3, y_vault, amount, customAccount=None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
+    amount_unitless = amount * 10 ** (y_vault.functions.decimals().call())
+    tx_hash = y_vault.functions.withdraw(amount_unitless).transact(
+        {'from': acct, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(f'Withdraw from YVault. Amount: {amount} shares. Withdrawer: {acct}')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
     parser.add_argument(
@@ -494,13 +629,10 @@ if __name__ == '__main__':
         raise ValueError(f'Unknown action: {args.action}')
 
     reporter = BalanceReporter(
-        w3, deployed_contracts['Coin'], deployed_contracts['Long'], deployed_contracts['Short'], deployed_contracts['YVault'])
+        w3, deployed_contracts['Long'], deployed_contracts['Long'], deployed_contracts['Short'], deployed_contracts['YVault'])
 
     y_vault = deployed_contracts['YVault']
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     # Print user balance
-    if args.network == 'local':
-        reporter.print_balances(admin.address, 'admin')
-    else:
-        reporter.print_balances(admin, 'admin')
+    # reporter.print_balances(admin, 'admin')
