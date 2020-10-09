@@ -5,7 +5,7 @@ from deploy_contracts import connect, deploy, get_contracts, full_setup, deposit
 w3, admin = connect('local', 'admin')
 contracts = get_contracts(w3)
 deployed_contracts = deploy(w3, contracts)
-w3, acc, deployed_contracts = full_setup(w3, admin, deployed_contracts)
+w3, acc, deployed_contracts = full_setup(w3, admin, deployed_contracts=deployed_contracts, price=2500000)
 
 coin = deployed_contracts['Coin']
 ltk = deployed_contracts['Long']

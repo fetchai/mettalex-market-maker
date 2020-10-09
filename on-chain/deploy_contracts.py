@@ -300,7 +300,7 @@ def connect_strategy(w3, address):
     return strategy
 
 
-def full_setup(w3, admin, deployed_contracts=None):
+def full_setup(w3, admin, deployed_contracts=None, price=None):
     if deployed_contracts is None:
         print('Deploying contracts')
         deployed_contracts = deploy(w3, contracts)
@@ -319,7 +319,9 @@ def full_setup(w3, admin, deployed_contracts=None):
     print('Setting Mettalex vault AMM')
     set_autonomous_market_maker(
         w3, deployed_contracts['Vault'], deployed_contracts['PoolController'])  # Zero fees for AMM
-    set_price(w3, deployed_contracts['Vault'], 2500000)
+    if price is not None:
+        # May be connecting to existing vault, if not then can set tht price here
+        set_price(w3, deployed_contracts['Vault'], price)
     return w3, admin, deployed_contracts
 
 
