@@ -142,7 +142,8 @@ def connect_contract(w3, contract, address):
 
 
 def connect_deployed(w3, contracts, contract_file_name='contract_address.json', cache_file_name='contract_cache.json'):
-    contract_file = Path(__file__).parent / 'contract-cache' / contract_file_name
+    contract_file = Path(__file__).parent / \
+        'contract-cache' / contract_file_name
     cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
 
     if not os.path.isfile(contract_file):
@@ -257,6 +258,19 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
         address=pool_address,
         abi=pool_contract.abi
     )
+    return balancer
+
+
+def connect_balancer(w3):
+    build_file = Path(__file__).parent / ".." / \
+        'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
+    with open(build_file, 'r') as f:
+        contract_details = json.load(f)
+
+    # get abi
+    abi = contract_details['abi']
+    balancer = w3.eth.contract(
+        abi=abi, address='0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78')
     return balancer
 
 
@@ -604,6 +618,112 @@ def withdraw(w3, y_vault, amount, customAccount=None):
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Withdraw from YVault. Amount: {amount} shares. Withdrawer: {acct}')
+
+
+def distribute_coin(w3, coin, amount=200000, customAccount=None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
+    transfer_amount = amount * 10 ** (coin.functions.decimals().call())
+    tx_hash = coin.functions.transfer(acct, transfer_amount).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(
+        f'Coin distribution successful. From = {w3.eth.defaultAccount} To = {acct} Amount = {amount}')
+
+
+def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
+    collateralAmount_unitless = collateralAmount * \
+        10 ** (coin.functions.decimals().call())
+    tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
+        {'from': customAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    tx_hash = vault.functions.mintFromCollateralAmount(collateralAmount_unitless).transact(
+        {'from': customAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(
+        f'Position tokens minted. Locked Coin: {collateralAmount} Minter: {acct}')
+
+
+def simulate_scenario():
+    w3, admin, deployed_contracts = full_setup(w3, admin)
+
+    print('\nSystem Setup Completed\n')
+
+    balancer_factory = deployed_contracts["BFactory"]
+    balancer = deployed_contracts["BPool"]
+    coin = deployed_contracts["Coin"]
+    ltk = deployed_contracts["Long"]
+    stk = deployed_contracts["Short"]
+    vault = deployed_contracts["Vault"]
+    y_controller = deployed_contracts["YVault"]
+    y_vault = deployed_contracts["YController"]
+    strategy = deployed_contracts["PoolController"]
+
+    reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
+
+    # accounts[0] or default account hols all the tokens.
+    user1 = w3.eth.accounts[1]
+    user2 = w3.eth.accounts[2]
+    user3 = w3.eth.accounts[3]
+    user4 = w3.eth.accounts[4]
+
+    distribute_coin(w3, coin, 200000, user1)
+    distribute_coin(w3, coin, 200000, user2)
+    distribute_coin(w3, coin, 200000, user3)
+    distribute_coin(w3, coin, 200000, user4)
+
+    mintPositionTokens(w3, vault, coin, 100000, user2)
+    mintPositionTokens(w3, vault, coin, 100000, user3)
+    mintPositionTokens(w3, vault, coin, 100000, user4)
+
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
+
+    deposit(w3, y_vault, coin, 200000, user1)
+    deposit(w3, y_vault, coin, 100000, user2)
+    deposit(w3, y_vault, coin, 100000, user3)
+    deposit(w3, y_vault, coin, 100000, user4)
+    deposit(w3, y_vault, coin, 200000)
+    earn(w3, y_vault)
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
+
+    swap_amount_in(w3, balancer, ltk, 500, stk, user2, 100)
+    swap_amount_in(w3, balancer, stk, 500, ltk, user3, 100)
+    swap_amount_in(w3, balancer, ltk, 500, stk, user4, 100)
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
+
+    withdraw(w3, y_vault, 200000)
+    withdraw(w3, y_vault, 200000, user1)
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
 
 
 if __name__ == '__main__':
