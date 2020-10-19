@@ -1,0 +1,151 @@
+{
+  "contracts": {
+    "StrategyBalancerMettalex": {
+      "address": "0x4bA483276C3BE67659c500be0EDb9A30DaF712E6",
+      "constructorCode": "608060405234801561001057600080fd5b50614012806100206000396000f3fe",
+      "bodyBytecodeHash": "9ddc8a8ea97144b709396a8da99c55cf1d9515e801aa5c58cdc03d0824479f21",
+      "localBytecodeHash": "9c8c74faa1e5f456e89247639c7bebe2504ed718bb4c10d86f220973f4575a5d",
+      "deployedBytecodeHash": "9c8c74faa1e5f456e89247639c7bebe2504ed718bb4c10d86f220973f4575a5d",
+      "types": {
+        "t_address": {
+          "id": "t_address",
+          "kind": "elementary",
+          "label": "address"
+        },
+        "t_bool": {
+          "id": "t_bool",
+          "kind": "elementary",
+          "label": "bool"
+        },
+        "t_uint256": {
+          "id": "t_uint256",
+          "kind": "elementary",
+          "label": "uint256"
+        }
+      },
+      "storage": [
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "want",
+          "astId": 23,
+          "type": "t_address",
+          "src": "1155:19:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "balancer",
+          "astId": 25,
+          "type": "t_address",
+          "src": "1239:23:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "mettalex_vault",
+          "astId": 27,
+          "type": "t_address",
+          "src": "1327:29:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "long_token",
+          "astId": 29,
+          "type": "t_address",
+          "src": "1420:25:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "short_token",
+          "astId": 31,
+          "type": "t_address",
+          "src": "1509:26:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "governance",
+          "astId": 33,
+          "type": "t_address",
+          "src": "1600:25:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "controller",
+          "astId": 35,
+          "type": "t_address",
+          "src": "1631:25:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "breaker",
+          "astId": 37,
+          "type": "t_bool",
+          "src": "1662:19:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "supply",
+          "astId": 39,
+          "type": "t_uint256",
+          "src": "1781:21:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "isBreachHandled",
+          "astId": 41,
+          "type": "t_bool",
+          "src": "1816:27:0"
+        },
+        {
+          "contract": "StrategyBalancerMettalex",
+          "path": "contracts/StrategyBalancerMettalex.sol",
+          "label": "initialized",
+          "astId": 43,
+          "type": "t_bool",
+          "src": "1895:24:0"
+        }
+      ],
+      "warnings": {
+        "hasConstructor": false,
+        "hasSelfDestruct": false,
+        "hasDelegateCall": false,
+        "hasInitialValuesInDeclarations": false,
+        "uninitializedBaseContracts": [],
+        "storageUncheckedVars": [],
+        "storageDiff": []
+      }
+    }
+  },
+  "solidityLibs": {},
+  "proxies": {
+    "pool-controller/StrategyBalancerMettalex": [
+      {
+        "address": "0xea4752d0F6d577810faf798E0A9ECb9E91c34cFF",
+        "version": "0.1.0",
+        "implementation": "0x4bA483276C3BE67659c500be0EDb9A30DaF712E6",
+        "admin": "0xb7691c157878F3e75243a9D02CFe6091CA8b52b8",
+        "kind": "Upgradeable"
+      },
+      {
+        "address": "0x8719b46dB3fe03e74A4039a68F8C2691a4661F3f",
+        "version": "0.1.0",
+        "implementation": "0x4bA483276C3BE67659c500be0EDb9A30DaF712E6",
+        "admin": "0xb7691c157878F3e75243a9D02CFe6091CA8b52b8",
+        "kind": "Upgradeable"
+      }
+    ]
+  },
+  "manifestVersion": "2.2",
+  "version": "0.1.0",
+  "proxyAdmin": {
+    "address": "0xb7691c157878F3e75243a9D02CFe6091CA8b52b8"
+  }
+}
