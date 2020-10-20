@@ -7,7 +7,8 @@ import argparse
 from deploy_contracts import connect, connect_contract, create_balancer_pool, full_setup, deploy_contract, get_contracts
 
 
-def get_addresses(contract_file='contract_address.json'):
+def get_addresses(contract_file_name='contract_address.json'):
+    contract_file = Path(__file__).parent / 'contract-cache' / contract_file_name
     if not os.path.isfile(contract_file):
         print('No address file')
         return
@@ -51,7 +52,8 @@ def connect_deployed(w3, contracts, contract_cache):
     return deployed_contracts, contract_cache
 
 
-def store_cache(contract_cache, index, cache_file='contract_cache.json'):
+def store_cache(contract_cache, index, cache_file_name='contract_cache.json'):
+    cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
     with open(cache_file, 'r') as f:
         addresses = json.load(f)
 
