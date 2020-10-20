@@ -319,7 +319,7 @@ def connect_strategy(w3, address):
     return strategy
 
 
-def full_setup(w3, admin, deployed_contracts=None, price=None):
+def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None):
     if deployed_contracts is None:
         print('Deploying contracts')
         deployed_contracts = deploy(w3, contracts)
@@ -652,7 +652,7 @@ def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=No
         f'Position tokens minted. Locked Coin: {collateralAmount} Minter: {acct}')
 
 
-def simulate_scenario():
+def simulate_scenario(w3, admin):
     w3, admin, deployed_contracts = full_setup(w3, admin)
 
     print('\nSystem Setup Completed\n')
@@ -749,7 +749,7 @@ if __name__ == '__main__':
         deployed_contracts = connect_deployed(w3, contracts)
     elif args.action == 'setup':
         #  will deploy and do the full setup
-        w3, acc, deployed_contracts = full_setup(w3, admin)
+        w3, acc, deployed_contracts = full_setup(w3, admin, contracts=contracts)
     else:
         raise ValueError(f'Unknown action: {args.action}')
 
