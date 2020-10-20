@@ -5,6 +5,9 @@ import json
 import argparse
 import shutil
 
+PRICE_DECIMALS = 1
+PRICE_SCALE = 10 * PRICE_DECIMALS
+
 
 def read_config():
     # Read configuration from local file system
@@ -158,8 +161,7 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
     with open(cache_file, 'r') as f:
         contract_cache = json.load(f)
 
-    network = get_network(w3)
-
+    account = w3.eth.defaultAccount
     deployed_contracts = {}
 
     for k in contracts.keys():
@@ -168,7 +170,10 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
                 w3, contracts[k], contract_cache[k])
 
         else:
-            if k == 'BPool':
+            if k == 'BFactory':
+                deployed_contracts[k] = deploy_contract(w3, contracts[k])
+
+            elif k == 'BPool':
                 deployed_contracts[k] = create_balancer_pool(
                     w3, contracts[k], connect_contract(w3, contracts['BFactory'], contract_cache['BFactory']))
 
@@ -183,9 +188,17 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
             elif k == 'PoolController':
                 deployed_contracts[k] = deploy_contract(
                     w3, contracts[k], contract_cache['YController'], contract_cache['Coin'], contract_cache['BPool'], contract_cache['Vault'], contract_cache['Long'], contract_cache['Short'])
+            elif k == 'Vault':
+                tok_version = args['Long'][3]
+                cap = args['Vault'][0] * PRICE_SCALE
+                floor = args['Vault'][1] * PRICE_SCALE
+                multiplier = args['Vault'][2]
+                feeRate = args['Vault'][3]
+                deployed_contracts[k] = deploy_contract(w3, contracts[k], 'Mettalex Vault', tok_version, contract_cache['Coin'], contract_cache['Long'], contract_cache['Short'],
+                                                        account, contract_cache['BPool'], cap, floor, multiplier, feeRate)
             else:
                 deployed_contracts[k] = deploy_contract(
-                    w3, contracts[k], *args[network][k])
+                    w3, contracts[k], *args[k])
         contract_cache[k] = deployed_contracts[k].address
 
     with open(cache_file, 'w') as f:
@@ -195,22 +208,36 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
 
 def deploy(w3, contracts, cache_file_name='contract_cache.json'):
     cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
-    acct = w3.eth.defaultAccount
+    account = w3.eth.defaultAccount
 
+    if not os.path.isfile('args.json'):
+        print('No args file')
+        return
+
+    with open('args.json', 'r') as f:
+        args = json.load(f)
+
+    # Balancer
     balancer_factory = deploy_contract(w3, contracts['BFactory'])
     balancer = create_balancer_pool(w3, contracts['BPool'], balancer_factory)
-    coin = deploy_contract(w3, contracts['Coin'], 'Tether USD', 'USDT', 18)
-    tok_version = 1
-    ltk = deploy_contract(
-        w3, contracts['Long'], 'Long Position', 'LTOK', 6, tok_version)
-    stk = deploy_contract(
-        w3, contracts['Short'], 'Short Position', 'STOK', 6, tok_version)
+
+    # Mettalex Coin and Vault
+    coin = deploy_contract(w3, contracts['Coin'], *args['Coin'])
+    ltk = deploy_contract(w3, contracts['Long'], *args['Long'])
+    stk = deploy_contract(w3, contracts['Short'], *args['Short'])
+
+    tok_version = args['Long'][3]
+    cap = args['Vault'][0] * PRICE_SCALE
+    floor = args['Vault'][1] * PRICE_SCALE
+    multiplier = args['Vault'][2]
+    feeRate = args['Vault'][3]
     vault = deploy_contract(
         w3, contracts['Vault'],
         'Mettalex Vault', tok_version, coin.address, ltk.address, stk.address,
-        acct, balancer.address, 3000000, 2000000, 100000000, 300
-    )
-    y_controller = deploy_contract(w3, contracts['YController'], acct)
+        account, balancer.address, cap, floor, multiplier, feeRate)
+
+    # Liquidity Provider
+    y_controller = deploy_contract(w3, contracts['YController'], account)
     y_vault = deploy_contract(
         w3, contracts['YVault'], coin.address, y_controller.address)
 
@@ -749,7 +776,8 @@ if __name__ == '__main__':
         deployed_contracts = connect_deployed(w3, contracts)
     elif args.action == 'setup':
         #  will deploy and do the full setup
-        w3, acc, deployed_contracts = full_setup(w3, admin, contracts=contracts)
+        w3, admin, deployed_contracts = full_setup(
+            w3, admin, contracts=contracts)
     else:
         raise ValueError(f'Unknown action: {args.action}')
 
