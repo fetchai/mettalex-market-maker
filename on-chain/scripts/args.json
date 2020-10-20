@@ -1,6 +1,6 @@
 {
   "Coin": ["Tether USD", "USDT", 6],
   "Long": ["Long Position", "LTOK", 5, 1],
-  "Short": ["STOK", "Short Position", 5, 1],
-  "Vault": [300, 200, 10, 300]
+  "Short": ["Short Position", "STOK", 5, 1],
+  "Vault": [300, 200, 1, 300]
 }

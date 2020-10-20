@@ -468,6 +468,15 @@ def get_vault_details(w3, contracts, address=None):
     stok_address = vault.functions.shortPositionToken().call()
     stok = w3.eth.contract(address=stok_address, abi=contracts['Short'].abi)
 
+    def token_details(tok):
+        return {
+            'adress': tok.address,
+            'name': tok.functions.name().call(),
+            'symbol': tok.functions.symbol().call(),
+            'decimals': tok.functions.decimals().call()
+        }
+
+
     name = vault.functions.contractName().call()
     vault_floor = vault.functions.priceFloor().call()
     vault_cap = vault.functions.priceCap().call()
@@ -475,10 +484,11 @@ def get_vault_details(w3, contracts, address=None):
     vault_spot = vault.functions.priceSpot().call()
     vault_details = {
         'vault': vault,
-        'coin': coin,
-        'ltok': ltok,
-        'stok': stok,
+        'coin': token_details(coin),
+        'ltok': token_details(ltok),
+        'stok': token_details(stok),
         'name': name,
+        'oracle': vault.functions.oracle().call(),
         'floor': vault_floor,
         'cap': vault_cap,
         'spot': vault_spot,
@@ -751,6 +761,15 @@ def simulate_scenario(w3, admin):
     reporter.print_balances(balancer.address, 'Balancer AMM')
     reporter.print_balances(w3.eth.defaultAccount, 'User 0')
     reporter.print_balances(user1, 'User 1')
+
+
+def update_oracle(w3, admin, vault, oracle, vault_address=None):
+    # Set oracle
+    if vault_address is not None:
+        vault = w3.eth.contract(abi=vault.abi, address=vault_address)
+    tx_hash = vault.functions.updateOracle(oracle).transact({'from': admin.address, 'gas': 1_000_000})
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(vault.functions.oracle().call())
 
 
 if __name__ == '__main__':
