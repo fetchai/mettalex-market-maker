@@ -1,52 +1,6 @@
 {
-  "local": {
-    "BFactory": [],
-    "BPool": ["0x5b1869D9A4C187F2EAa108f3062412ecf0526b24"],
-    "Coin": ["Tether USD", "USDT", "18"],
-    "Long": ["Long Position", "LTOK", "5", "1"],
-    "Short": ["STOK", "Short Position", "5", "1"],
-    "Vault": [
-      "Mettalex Vault",
-      "1",
-      "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B",
-      "0xC89Ce4735882C9F0f0FE26686c53074E09B0D550",
-      "0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb",
-      "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
-      "0x3c63250aFA2470359482d98749f2d60D2971c818",
-      "3000000",
-      "2000000",
-      "100000000",
-      "300"
-    ],
-    "YController": ["0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1"],
-    "YVault": [
-      "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B",
-      "0xe982E462b094850F12AF94d21D470e21bE9D0E9C"
-    ]
-  },
-  "kovan": {
-    "BFactory": [],
-    "BPool": ["0x5b1869D9A4C187F2EAa108f3062412ecf0526b24"],
-    "Coin": ["Tether USD", "USDT", "18"],
-    "Long": ["Long Position", "LTOK", "5", "1"],
-    "Short": ["STOK", "Short Position", "5", "1"],
-    "Vault": [
-      "Mettalex Vault",
-      "1",
-      "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B",
-      "0xC89Ce4735882C9F0f0FE26686c53074E09B0D550",
-      "0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb",
-      "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
-      "0x3c63250aFA2470359482d98749f2d60D2971c818",
-      "3000000",
-      "2000000",
-      "100000000",
-      "300"
-    ],
-    "YController": ["0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1"],
-    "YVault": [
-      "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B",
-      "0xe982E462b094850F12AF94d21D470e21bE9D0E9C"
-    ]
-  }
+  "Coin": ["Tether USD", "USDT", 6],
+  "Long": ["Long Position", "LTOK", 5, 1],
+  "Short": ["STOK", "Short Position", 5, 1],
+  "Vault": [300, 200, 10, 300]
 }
