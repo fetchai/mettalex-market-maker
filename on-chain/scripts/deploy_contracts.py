@@ -476,7 +476,6 @@ def get_vault_details(w3, contracts, address=None):
             'decimals': tok.functions.decimals().call()
         }
 
-
     name = vault.functions.contractName().call()
     vault_floor = vault.functions.priceFloor().call()
     vault_cap = vault.functions.priceCap().call()
@@ -767,9 +766,44 @@ def update_oracle(w3, admin, vault, oracle, vault_address=None):
     # Set oracle
     if vault_address is not None:
         vault = w3.eth.contract(abi=vault.abi, address=vault_address)
-    tx_hash = vault.functions.updateOracle(oracle).transact({'from': admin.address, 'gas': 1_000_000})
+    tx_hash = vault.functions.updateOracle(oracle).transact(
+        {'from': admin.address, 'gas': 1_000_000})
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(vault.functions.oracle().call())
+
+
+def after_breach_setup(w3, contracts, coin, balancer, strategy, price=None):
+    account = w3.eth.defaultAccount
+    if not os.path.isfile('args.json'):
+        print('No args file')
+        return
+
+    with open('args.json', 'r') as f:
+        args = json.load(f)
+
+    # contract deployment:
+    ltk = deploy_contract(w3, contracts['Long'], *args['Long'])
+    stk = deploy_contract(w3, contracts['Short'], *args['Short'])
+
+    tok_version = args['Long'][3]
+    cap = args['Vault'][0] * PRICE_SCALE
+    floor = args['Vault'][1] * PRICE_SCALE
+    multiplier = args['Vault'][2]
+    feeRate = args['Vault'][3]
+    vault = deploy_contract(
+        w3, contracts['Vault'],
+        'Mettalex Vault', tok_version, coin.address, ltk.address, stk.address,
+        account, balancer.address, cap, floor, multiplier, feeRate)
+
+    # Contract setup:
+    print('Whitelisting Mettalex vault to mint position tokens')
+    whitelist_vault(w3, vault, ltk, stk)
+
+    if price is not None:
+        # May be connecting to existing vault, if not then can set tht price here
+        set_price(w3, vault, price)
+    
+    return ltk, stk, vault
 
 
 def update_commodity_after_breach(w3, strategy, vault, ltk, stk):
@@ -817,11 +851,16 @@ if __name__ == '__main__':
             w3, admin, contracts=contracts)
     else:
         raise ValueError(f'Unknown action: {args.action}')
-
-    reporter = BalanceReporter(
-        w3, deployed_contracts['Long'], deployed_contracts['Long'], deployed_contracts['Short'], deployed_contracts['YVault'])
-
+    
+    coin = deployed_contracts['Coin']
+    ltk = deployed_contracts['Long']
+    stk = deployed_contracts['Short']
+    vault = deployed_contracts['Vault']
+    balancer = deployed_contracts['BPool']
     y_vault = deployed_contracts['YVault']
+    strategy = deployed_contracts['PoolController']
+
+    reporter = BalanceReporter(w3, ltk, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     # Print user balance
