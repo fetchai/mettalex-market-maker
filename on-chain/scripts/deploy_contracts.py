@@ -772,6 +772,24 @@ def update_oracle(w3, admin, vault, oracle, vault_address=None):
     print(vault.functions.oracle().call())
 
 
+def update_commodity_after_breach(w3, strategy, vault, ltk, stk):
+    acct = w3.eth.defaultAccount
+    tx_hash = strategy.functions.updateCommodityAfterBreach(vault.address, ltk.address, stk.address).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(f'Updated Vault {vault.address}')
+
+
+def handle_breach(w3, strategy):
+    acct = w3.eth.defaultAccount
+    tx_hash = strategy.functions.handleBreach().transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    tx_receipt.gasUsed
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
     parser.add_argument(
