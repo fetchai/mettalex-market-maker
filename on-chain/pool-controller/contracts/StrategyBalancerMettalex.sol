@@ -71,6 +71,8 @@ contract StrategyBalancerMettalex {
         }
     }
 
+    event Swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut);
+
     constructor(
         address _controller,
         address _want,
@@ -526,6 +528,7 @@ contract StrategyBalancerMettalex {
             );
         }
 
+        emit Swap(tokenIn, tokenOut, tokenAmountIn, tokenAmountOut);
         bPool.setPublicSwap(false);
     }
 
@@ -583,6 +586,8 @@ contract StrategyBalancerMettalex {
         );
 
         Balancer bPool = Balancer(balancer);
+        IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
+
         (tokenAmountOut, ) = bPool.swapExactAmountIn(
             tokenIn,
             tokenAmountIn,
@@ -614,6 +619,8 @@ contract StrategyBalancerMettalex {
         );
 
         Balancer bPool = Balancer(balancer);
+        IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
+
         (tokenAmountOut, ) = bPool.swapExactAmountIn(
             tokenIn,
             tokenAmountIn,
