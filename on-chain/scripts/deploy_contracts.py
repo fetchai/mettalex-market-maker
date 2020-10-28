@@ -279,7 +279,7 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     # Find pool address from contract event
-    receipt = balancer_factory.events.LOG_NEW_POOL().processReceipt(tx_receipt)
+    receipt = balancer_factory.events.LOG_NEW_POOL().getLogs()
     pool_address = receipt[0]['args']['pool']
     balancer = w3.eth.contract(
         address=pool_address,
@@ -476,7 +476,6 @@ def get_vault_details(w3, contracts, address=None):
             'decimals': tok.functions.decimals().call()
         }
 
-
     name = vault.functions.contractName().call()
     vault_floor = vault.functions.priceFloor().call()
     vault_cap = vault.functions.priceCap().call()
@@ -608,6 +607,7 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, mi
     ).transact(
         {'from': acct, 'gas': 1_000_000}
     )
+
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     return tx_hash
 
@@ -767,10 +767,37 @@ def update_oracle(w3, admin, vault, oracle, vault_address=None):
     # Set oracle
     if vault_address is not None:
         vault = w3.eth.contract(abi=vault.abi, address=vault_address)
-    tx_hash = vault.functions.updateOracle(oracle).transact({'from': admin.address, 'gas': 1_000_000})
+    tx_hash = vault.functions.updateOracle(oracle).transact(
+        {'from': admin.address, 'gas': 1_000_000})
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(vault.functions.oracle().call())
 
+
+def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
+    # approve
+    tx_hash = tokenIn.functions.approve(strategy.address, amountIn).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    # swap
+    tx_hash = strategy.functions.swap(tokenIn.address, amountIn, tokenOut.address, amountOut).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    #amount of tokens received
+    logs = strategy.events.Swap.getLogs()
+    amount_out = logs[0]['args']['amountOut']
+    print(
+        f'Swap successful from {tokenIn.address} to {tokenOut.address} with received amount = {amount_out}')
+
+
+def get_balance(address, coin, ltk, stk):
+  stk_balance = stk.functions.balanceOf(address).call()/10**5
+  ltk_balance = ltk.functions.balanceOf(address).call()/10**5
+  coin_balance = coin.functions.balanceOf(address).call()/10**6
+  return stk_balance, ltk_balance, coin_balance
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
@@ -803,7 +830,16 @@ if __name__ == '__main__':
     reporter = BalanceReporter(
         w3, deployed_contracts['Long'], deployed_contracts['Long'], deployed_contracts['Short'], deployed_contracts['YVault'])
 
+    strategy = deployed_contracts['PoolController']
+    bpool = deployed_contracts['BPool']
+    bfactory = deployed_contracts['BFactory']
     y_vault = deployed_contracts['YVault']
+    y_controller = deployed_contracts['YController']
+    vault = deployed_contracts['Vault']
+    coin = deployed_contracts['Coin']
+    ltk = deployed_contracts['Short']
+    stk = deployed_contracts['Long']
+
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     # Print user balance
