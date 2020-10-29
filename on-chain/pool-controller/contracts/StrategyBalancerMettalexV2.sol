@@ -31,7 +31,7 @@ import "./lib/SafeERC20.sol";
 
 */
 
-contract StrategyBalancerMettalex {
+contract StrategyBalancerMettalexV2 {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
@@ -70,6 +70,13 @@ contract StrategyBalancerMettalex {
             _;
         }
     }
+
+    event Swap(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 amountOut
+    );
 
     constructor(
         address _controller,
@@ -122,12 +129,6 @@ contract StrategyBalancerMettalex {
         require(breaker == false, "!breaker");
 
         isBreachHandled = true;
-
-        Balancer bPool = Balancer(balancer);
-
-        // Set public swap to false
-        bPool.setPublicSwap(false);
-
         // Unbind tokens from Balancer pool
         _unbind();
         _settle();
@@ -206,7 +207,7 @@ contract StrategyBalancerMettalex {
         return wt;
     }
 
-    function updateSpotAndNormalizeWeights() external notSettled {
+    function updateSpotAndNormalizeWeights() public notSettled {
         // Get AMM Pool token balances
         uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
         uint256 balancerLtk = IERC20(long_token).balanceOf(balancer);
@@ -308,17 +309,12 @@ contract StrategyBalancerMettalex {
     function deposit() external notSettled {
         require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
-        Balancer bPool = Balancer(balancer);
 
         uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
             address(this)
         );
-        bPool.setPublicSwap(false);
 
         _depositInternal();
-
-        // Again enable public swap
-        bPool.setPublicSwap(true);
 
         uint256 wantAfterMintandDeposit = IERC20(want).balanceOf(address(this));
 
@@ -327,16 +323,32 @@ contract StrategyBalancerMettalex {
         );
     }
 
+    function _mintPositions(uint256 _amount)
+        internal
+        returns (uint256 ltk, uint256 stk)
+    {
+        IERC20(want).safeApprove(mettalex_vault, 0);
+        IERC20(want).safeApprove(mettalex_vault, _amount);
+
+        uint256 strategyLtk = IERC20(long_token).balanceOf(address(this));
+        uint256 strategyStk = IERC20(short_token).balanceOf(address(this));
+
+        MettalexVault(mettalex_vault).mintFromCollateralAmount(_amount);
+
+        uint256 afterMintLtk = IERC20(long_token).balanceOf(address(this));
+        uint256 afterMintStk = IERC20(short_token).balanceOf(address(this));
+
+        ltk = afterMintLtk.sub(strategyLtk);
+        stk = afterMintStk.sub(strategyStk);
+    }
+
     function _depositInternal() private {
         // Get coin token balance and allocate half to minting position tokens
         uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
             address(this)
         );
         uint256 wantToVault = wantBeforeMintandDeposit.div(2);
-        IERC20(want).safeApprove(mettalex_vault, 0);
-        IERC20(want).safeApprove(mettalex_vault, wantToVault);
-
-        MettalexVault(mettalex_vault).mintFromCollateralAmount(wantToVault);
+        _mintPositions(wantToVault);
 
         uint256 wantAfterMint = IERC20(want).balanceOf(address(this));
 
@@ -406,11 +418,6 @@ contract StrategyBalancerMettalex {
             handleBreach();
             IERC20(want).transfer(Controller(controller).vaults(want), _amount);
         } else {
-            Balancer bPool = Balancer(balancer);
-
-            // Unbind tokens from Balancer pool
-            bPool.setPublicSwap(false);
-
             _unbind();
 
             _redeemPositions();
@@ -419,8 +426,6 @@ contract StrategyBalancerMettalex {
             IERC20(want).transfer(Controller(controller).vaults(want), _amount);
 
             _depositInternal();
-
-            bPool.setPublicSwap(true);
         }
 
         supply = supply.sub(_amount);
@@ -459,11 +464,6 @@ contract StrategyBalancerMettalex {
     }
 
     function _withdrawAll() internal {
-        Balancer bPool = Balancer(balancer);
-
-        // Unbind tokens from Balancer pool
-        bPool.setPublicSwap(false);
-
         uint256 _before = IERC20(want).balanceOf(address(this));
 
         _unbind();
@@ -499,11 +499,143 @@ contract StrategyBalancerMettalex {
 
         _depositInternal();
 
-        // public swap was set to false during handle breach
+        isBreachHandled = false;
+    }
+
+    function swap(
+        address tokenIn,
+        uint256 tokenAmountIn,
+        address tokenOut,
+        uint256 minAmountOut
+    ) external returns (uint256 tokenAmountOut) {
+        require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
+
+        //get tokens
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), tokenAmountIn);
+
         Balancer bPool = Balancer(balancer);
         bPool.setPublicSwap(true);
 
-        isBreachHandled = false;
+        if (tokenIn == want) {
+            tokenAmountOut = _swapFromCoin(
+                tokenAmountIn,
+                tokenOut,
+                minAmountOut
+            );
+        } else if (tokenOut == want) {
+            tokenAmountOut = _swapToCoin(tokenIn, tokenAmountIn, minAmountOut);
+        } else {
+            tokenAmountOut = _swapPositions(
+                tokenIn,
+                tokenAmountIn,
+                tokenOut,
+                minAmountOut
+            );
+        }
+
+        emit Swap(tokenIn, tokenOut, tokenAmountIn, tokenAmountOut);
+        bPool.setPublicSwap(false);
+    }
+
+    function _swapFromCoin(
+        uint256 tokenAmountIn,
+        address tokenOut,
+        uint256 minAmountOut
+    ) internal returns (uint256 tokenAmountOut) {
+        require(
+            tokenOut == long_token || tokenOut == short_token,
+            "ERR_TOKEN_OUT"
+        );
+
+        Balancer bPool = Balancer(balancer);
+        (uint256 ltkMinted, uint256 stkMinted) = _mintPositions(tokenAmountIn);
+
+        if (tokenOut == long_token) {
+            IERC20(short_token).safeApprove(balancer, stkMinted);
+
+            (tokenAmountOut, ) = bPool.swapExactAmountIn(
+                short_token,
+                stkMinted,
+                long_token,
+                1,
+                uint256(-1)
+            );
+
+            tokenAmountOut = tokenAmountOut.add(ltkMinted);
+        } else {
+            IERC20(long_token).safeApprove(balancer, ltkMinted);
+
+            (tokenAmountOut, ) = bPool.swapExactAmountIn(
+                long_token,
+                ltkMinted,
+                short_token,
+                1,
+                uint256(-1)
+            );
+
+            tokenAmountOut = tokenAmountOut.add(stkMinted);
+        }
+
+        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
+        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
+    }
+
+    function _swapToCoin(
+        address tokenIn,
+        uint256 tokenAmountIn,
+        uint256 minAmountOut
+    ) internal returns (uint256 tokenAmountOut) {
+        require(
+            tokenIn == long_token || tokenIn == short_token,
+            "ERR_TOKEN_IN"
+        );
+
+        Balancer bPool = Balancer(balancer);
+        IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
+
+        (tokenAmountOut, ) = bPool.swapExactAmountIn(
+            tokenIn,
+            tokenAmountIn,
+            want,
+            minAmountOut,
+            uint256(-1)
+        );
+
+        updateSpotAndNormalizeWeights();
+
+        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
+        IERC20(want).transfer(msg.sender, tokenAmountOut);
+    }
+
+    function _swapPositions(
+        address tokenIn,
+        uint256 tokenAmountIn,
+        address tokenOut,
+        uint256 minAmountOut
+    ) internal returns (uint256 tokenAmountOut) {
+        require(tokenIn != tokenOut, "ERR_SAME_TOKEN_SWAP");
+        require(
+            tokenIn == long_token || tokenIn == short_token,
+            "ERR_TOKEN_IN"
+        );
+        require(
+            tokenOut == long_token || tokenOut == short_token,
+            "ERR_TOKEN_OUT"
+        );
+
+        Balancer bPool = Balancer(balancer);
+        IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
+
+        (tokenAmountOut, ) = bPool.swapExactAmountIn(
+            tokenIn,
+            tokenAmountIn,
+            tokenOut,
+            minAmountOut,
+            uint256(-1)
+        );
+
+        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
+        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
     }
 
     function balanceOf() external view returns (uint256) {
