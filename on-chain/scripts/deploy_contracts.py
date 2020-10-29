@@ -59,7 +59,7 @@ def connect(network, account='user'):
     return w3, admin
 
 
-def get_contracts(w3):
+def get_contracts(w3, strategy_version=1):
     """
         make --directory=mettalex-balancer deploy_pool_factory
         make --directory=mettalex-balancer deploy_balancer_amm
@@ -92,9 +92,13 @@ def get_contracts(w3):
     yvault_build_file = Path(
         __file__).parent / ".." / 'mettalex-yearn' / 'build' / 'contracts' / 'yVault.json'
 
-    # May need to deploy pool controller via openzeppelin cli for upgradeable contract
+    # Strategy contracts
+    build_file_name = 'StrategyBalancerMettalex.json'
+    if (strategy_version == 2):
+        build_file_name = 'StrategyBalancerMettalexV2.json'
+
     pool_controller_build_file = Path(
-        __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / 'StrategyBalancerMettalex.json'
+        __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / build_file_name
 
     contracts = {
         'BFactory': create_contract(w3, bfactory_build_file),
@@ -786,7 +790,7 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
-    #amount of tokens received
+    # amount of tokens received
     logs = strategy.events.Swap.getLogs()
     amount_out = logs[0]['args']['amountOut']
     print(
@@ -794,10 +798,12 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
 
 
 def get_balance(address, coin, ltk, stk):
-  stk_balance = stk.functions.balanceOf(address).call()/10**5
-  ltk_balance = ltk.functions.balanceOf(address).call()/10**5
-  coin_balance = coin.functions.balanceOf(address).call()/10**6
-  return stk_balance, ltk_balance, coin_balance
+    stk_balance = stk.functions.balanceOf(address).call()/10**5
+    ltk_balance = ltk.functions.balanceOf(address).call()/10**5
+    coin_balance = coin.functions.balanceOf(address).call()/10**6
+    print(f'Coin: {coin_balance}, Long: {ltk_balance} and Short: {stk_balance}')
+    return stk_balance, ltk_balance, coin_balance
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')

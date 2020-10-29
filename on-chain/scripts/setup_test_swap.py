@@ -79,7 +79,7 @@ def swap_positions():
 if __name__ == '__main__':
     # setup
     w3, admin = connect('local', 'admin')
-    contracts = get_contracts(w3)
+    contracts = get_contracts(w3, 2)
     deployed_contracts = deploy(w3, contracts)
     w3, acc, deployed_contracts = full_setup(w3, admin, deployed_contracts=deployed_contracts, price=2500)
 
