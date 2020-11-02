@@ -42,25 +42,40 @@ contract StrategyBalancerMettalexV2 {
 
     address public balancer; // = address(0x72Cd8f4504941Bf8c5a21d1Fd83A96499FD71d2C);
 
-    address public mettalex_vault; // = address(0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb);
-    address public long_token; // = address(0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B);
-    address public short_token; // = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
+    address public mettalexVault; // = address(0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb);
+    address public longToken; // = address(0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B);
+    address public shortToken; // = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
 
     address public governance;
     address public controller;
     bool public breaker; // = false;
+
     // Supply tracks the number of `want` that we have lent out of other distro's
     uint256 public supply; // = 0;
     bool public isBreachHandled;
 
+    // Struct containing variables needed for denormalized weight calculation
+    // to avoid stack error
+    struct PriceInfo {
+        uint256 floor;
+        uint256 spot;
+        uint256 cap;
+        uint256 range;
+        uint256 C;
+        uint256 dc;
+        uint256 dl;
+        uint256 ds;
+        uint256 d;
+    }
+
     modifier notSettled {
-        MettalexVault mVault = MettalexVault(mettalex_vault);
+        MettalexVault mVault = MettalexVault(mettalexVault);
         require(!mVault.isSettled(), "mVault is already settled");
         _;
     }
 
     modifier settled {
-        MettalexVault mVault = MettalexVault(mettalex_vault);
+        MettalexVault mVault = MettalexVault(mettalexVault);
         require(mVault.isSettled(), "mVault should be settled");
         _;
     }
@@ -82,15 +97,15 @@ contract StrategyBalancerMettalexV2 {
         address _controller,
         address _want,
         address _balancer,
-        address _mettalex_vault,
-        address _long_token,
-        address _short_token
+        address _mettalexVault,
+        address _longToken,
+        address _shortToken
     ) public {
         want = _want;
         balancer = _balancer;
-        mettalex_vault = _mettalex_vault;
-        long_token = _long_token;
-        short_token = _short_token;
+        mettalexVault = _mettalexVault;
+        longToken = _longToken;
+        shortToken = _shortToken;
         governance = msg.sender;
         controller = _controller;
         breaker = false;
@@ -119,7 +134,7 @@ contract StrategyBalancerMettalexV2 {
     }
 
     function _settle() internal settled {
-        MettalexVault mVault = MettalexVault(mettalex_vault);
+        MettalexVault mVault = MettalexVault(mettalexVault);
         mVault.settlePositions();
     }
 
@@ -135,42 +150,28 @@ contract StrategyBalancerMettalexV2 {
     }
 
     function _redeemPositions() internal {
-        MettalexVault mVault = MettalexVault(mettalex_vault);
-        uint256 ltk_qty = IERC20(long_token).balanceOf(address(this));
-        uint256 stk_qty = IERC20(short_token).balanceOf(address(this));
-        if (stk_qty < ltk_qty) {
-            if (stk_qty > 0) {
-                mVault.redeemPositions(stk_qty);
+        MettalexVault mVault = MettalexVault(mettalexVault);
+        uint256 ltkQty = IERC20(longToken).balanceOf(address(this));
+        uint256 stkQty = IERC20(shortToken).balanceOf(address(this));
+        if (stkQty < ltkQty) {
+            if (stkQty > 0) {
+                mVault.redeemPositions(stkQty);
             }
-        } else if (ltk_qty > 0) {
-            mVault.redeemPositions(ltk_qty);
+        } else if (ltkQty > 0) {
+            mVault.redeemPositions(ltkQty);
         }
     }
 
-    // Struct containing variables needed for denormalized weight calculation
-    // to avoid stack error
-    struct PriceInfo {
-        uint256 floor;
-        uint256 spot;
-        uint256 cap;
-        uint256 range;
-        uint256 C;
-        uint256 d_c;
-        uint256 d_l;
-        uint256 d_s;
-        uint256 d;
-    }
-
-    function _calcDenormWeights(uint256[3] memory bal)
+    function _calcDenormWeights(uint256[3] memory bal, uint256 spotPrice)
         internal
         view
         returns (uint256[3] memory wt)
     {
         //  Number of collateral tokens per pair of long and short tokens
-        MettalexVault mVault = MettalexVault(mettalex_vault);
+        MettalexVault mVault = MettalexVault(mettalexVault);
         PriceInfo memory price;
 
-        price.spot = mVault.priceSpot();
+        price.spot = spotPrice; //; mVault.priceSpot();
         price.floor = mVault.priceFloor();
         price.cap = mVault.priceCap();
         price.range = price.cap.sub(price.floor);
@@ -182,14 +183,14 @@ contract StrategyBalancerMettalexV2 {
         // d =  x_c + C*v*x_l + C*x_s*(1 - v)
         // Try to 'avoid CompilerError: Stack too deep, try removing local variables.'
         // by using single variable to store [x_c, x_l, x_s]
-        price.d_c = bal[2];
-        price.d_l = price.C.mul(price.spot.sub(price.floor)).mul(bal[1]).div(
+        price.dc = bal[2];
+        price.dl = price.C.mul(price.spot.sub(price.floor)).mul(bal[1]).div(
             price.range
         );
-        price.d_s = price.C.mul(price.cap.sub(price.spot)).mul(bal[0]).div(
+        price.ds = price.C.mul(price.cap.sub(price.spot)).mul(bal[0]).div(
             price.range
         );
-        price.d = price.d_c.add(price.d_l).add(price.d_s);
+        price.d = price.dc.add(price.dl).add(price.ds);
 
         //        new_wts = [
         //            x_c/d,
@@ -198,29 +199,31 @@ contract StrategyBalancerMettalexV2 {
         //        ]
         //        new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
 
-        wt[0] = price.d_s.mul(47 ether).div(price.d).add(1 ether);
-        wt[1] = price.d_l.mul(47 ether).div(price.d).add(1 ether);
-        wt[2] = price.d_c.mul(47 ether).div(price.d).add(1 ether);
+        wt[0] = price.ds.mul(47 ether).div(price.d).add(1 ether);
+        wt[1] = price.dl.mul(47 ether).div(price.d).add(1 ether);
+        wt[2] = price.dc.mul(47 ether).div(price.d).add(1 ether);
 
-        //        wt[1] = bal[1].mul(100 ether).mul(price.d_l).mul(price.spot.sub(price.floor)).div(price.range).div(d).div(2);
+        //        wt[1] = bal[1].mul(100 ether).mul(price.dl).mul(price.spot.sub(price.floor)).div(price.range).div(d).div(2);
         //        wt[2] = bal[2].mul(100 ether).mul(C).mul(price.cap.sub(price.spot)).div(price.range).div(d).div(2);
         return wt;
     }
 
     function updateSpotAndNormalizeWeights() public notSettled {
+        uint256 spotPrice = MettalexVault(mettalexVault).priceSpot();
+        _rebalance(spotPrice);
+    }
+
+    function _rebalance(uint256 spotPrice) internal {
         // Get AMM Pool token balances
-        uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
-        uint256 balancerLtk = IERC20(long_token).balanceOf(balancer);
-        uint256 balancerWant = IERC20(want).balanceOf(balancer);
+        uint256[3] memory bal;
+        bal[0] = IERC20(shortToken).balanceOf(balancer);
+        bal[1] = IERC20(longToken).balanceOf(balancer);
+        bal[2] = IERC20(want).balanceOf(balancer);
 
         // Re-calculate de-normalised weights
-        uint256[3] memory bal;
-        bal[0] = balancerStk;
-        bal[1] = balancerLtk;
-        bal[2] = balancerWant;
-        uint256[3] memory newWt = _calcDenormWeights(bal);
+        uint256[3] memory newWt = _calcDenormWeights(bal, spotPrice);
 
-        address[3] memory tokens = [short_token, long_token, want];
+        address[3] memory tokens = [shortToken, longToken, want];
 
         // Calculate delta in weights
         Balancer bPool = Balancer(balancer);
@@ -238,6 +241,21 @@ contract StrategyBalancerMettalexV2 {
         );
 
         _sortAndRebind(delta, newWt, bal, tokens);
+    }
+
+    function _calculateSpotPrice() public view returns (uint256 spotPrice) {
+        MettalexVault mVault = MettalexVault(mettalexVault);
+        uint256 floor = mVault.priceFloor();
+        uint256 cap = mVault.priceCap();
+
+        //get spot price from balancer pool
+        Balancer bPool = Balancer(balancer);
+        uint256 priceShort = bPool.getSpotPrice(want, shortToken);
+        uint256 priceLong = bPool.getSpotPrice(want, longToken);
+
+        spotPrice = floor.add(
+            (cap.sub(floor)).mul(priceLong).div(priceShort.add(priceLong))
+        );
     }
 
     function _sortAndRebind(
@@ -327,16 +345,16 @@ contract StrategyBalancerMettalexV2 {
         internal
         returns (uint256 ltk, uint256 stk)
     {
-        IERC20(want).safeApprove(mettalex_vault, 0);
-        IERC20(want).safeApprove(mettalex_vault, _amount);
+        IERC20(want).safeApprove(mettalexVault, 0);
+        IERC20(want).safeApprove(mettalexVault, _amount);
 
-        uint256 strategyLtk = IERC20(long_token).balanceOf(address(this));
-        uint256 strategyStk = IERC20(short_token).balanceOf(address(this));
+        uint256 strategyLtk = IERC20(longToken).balanceOf(address(this));
+        uint256 strategyStk = IERC20(shortToken).balanceOf(address(this));
 
-        MettalexVault(mettalex_vault).mintFromCollateralAmount(_amount);
+        MettalexVault(mettalexVault).mintFromCollateralAmount(_amount);
 
-        uint256 afterMintLtk = IERC20(long_token).balanceOf(address(this));
-        uint256 afterMintStk = IERC20(short_token).balanceOf(address(this));
+        uint256 afterMintLtk = IERC20(longToken).balanceOf(address(this));
+        uint256 afterMintStk = IERC20(shortToken).balanceOf(address(this));
 
         ltk = afterMintLtk.sub(strategyLtk);
         stk = afterMintStk.sub(strategyStk);
@@ -354,21 +372,21 @@ contract StrategyBalancerMettalexV2 {
 
         // Get AMM Pool token balances
         uint256 balancerWant = IERC20(want).balanceOf(balancer);
-        uint256 balancerLtk = IERC20(long_token).balanceOf(balancer);
-        uint256 balancerStk = IERC20(short_token).balanceOf(balancer);
+        uint256 balancerLtk = IERC20(longToken).balanceOf(balancer);
+        uint256 balancerStk = IERC20(shortToken).balanceOf(balancer);
 
         // Get Strategy token balances
         uint256 strategyWant = wantAfterMint;
-        uint256 strategyLtk = IERC20(long_token).balanceOf(address(this));
-        uint256 strategyStk = IERC20(short_token).balanceOf(address(this));
+        uint256 strategyLtk = IERC20(longToken).balanceOf(address(this));
+        uint256 strategyStk = IERC20(shortToken).balanceOf(address(this));
 
         // Approve transfer to balancer pool
         IERC20(want).safeApprove(balancer, 0);
         IERC20(want).safeApprove(balancer, strategyWant);
-        IERC20(long_token).safeApprove(balancer, 0);
-        IERC20(long_token).safeApprove(balancer, strategyLtk);
-        IERC20(short_token).safeApprove(balancer, 0);
-        IERC20(short_token).safeApprove(balancer, strategyStk);
+        IERC20(longToken).safeApprove(balancer, 0);
+        IERC20(longToken).safeApprove(balancer, strategyLtk);
+        IERC20(shortToken).safeApprove(balancer, 0);
+        IERC20(shortToken).safeApprove(balancer, strategyStk);
 
         // Re-calculate de-normalised weights
         // While calculating weights, consider all ( balancer + strategy ) tokens to even out the weights
@@ -376,21 +394,24 @@ contract StrategyBalancerMettalexV2 {
         bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
         bal[2] = strategyWant.add(balancerWant);
-        uint256[3] memory wt = _calcDenormWeights(bal);
+        uint256[3] memory wt = _calcDenormWeights(
+            bal,
+            MettalexVault(mettalexVault).priceSpot()
+        );
 
         Balancer bPool = Balancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
         bool isWantBound = bPool.isBound(want);
-        bool isStkBound = bPool.isBound(short_token);
-        bool isLtkBound = bPool.isBound(long_token);
+        bool isStkBound = bPool.isBound(shortToken);
+        bool isLtkBound = bPool.isBound(longToken);
 
         if (isStkBound != true && isLtkBound != true && isWantBound != true) {
-            bPool.bind(short_token, strategyStk.add(balancerStk), wt[0]);
-            bPool.bind(long_token, strategyLtk.add(balancerLtk), wt[1]);
+            bPool.bind(shortToken, strategyStk.add(balancerStk), wt[0]);
+            bPool.bind(longToken, strategyLtk.add(balancerLtk), wt[1]);
             bPool.bind(want, strategyWant.add(balancerWant), wt[2]);
         } else {
             int256[3] memory delta;
-            address[3] memory tokens = [short_token, long_token, want];
+            address[3] memory tokens = [shortToken, longToken, want];
 
             // Max denorm value is compatible with int256
             delta[0] = int256(wt[0]).sub(
@@ -413,7 +434,7 @@ contract StrategyBalancerMettalexV2 {
         require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
 
-        MettalexVault mVault = MettalexVault(mettalex_vault);
+        MettalexVault mVault = MettalexVault(mettalexVault);
         if (mVault.isSettled()) {
             handleBreach();
             IERC20(want).transfer(Controller(controller).vaults(want), _amount);
@@ -436,8 +457,8 @@ contract StrategyBalancerMettalexV2 {
         require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
         require(address(_token) != want, "Want");
-        require(address(_token) != long_token, "LTOK");
-        require(address(_token) != short_token, "STOK");
+        require(address(_token) != longToken, "LTOK");
+        require(address(_token) != shortToken, "STOK");
 
         balance = IERC20(_token).balanceOf(address(this));
         IERC20(_token).safeTransfer(controller, balance);
@@ -452,15 +473,15 @@ contract StrategyBalancerMettalexV2 {
         balance = IERC20(want).balanceOf(address(this));
         address _vault = Controller(controller).vaults(want);
 
-        uint256 ltkDust = IERC20(long_token).balanceOf(address(this));
-        uint256 stkDust = IERC20(short_token).balanceOf(address(this));
+        uint256 ltkDust = IERC20(longToken).balanceOf(address(this));
+        uint256 stkDust = IERC20(shortToken).balanceOf(address(this));
 
         // additional protection so we don't burn the funds
         require(_vault != address(0), "!vault");
         IERC20(want).safeTransfer(_vault, balance);
 
-        IERC20(long_token).safeTransfer(controller, ltkDust);
-        IERC20(short_token).safeTransfer(controller, stkDust);
+        IERC20(longToken).safeTransfer(controller, ltkDust);
+        IERC20(shortToken).safeTransfer(controller, stkDust);
     }
 
     function _withdrawAll() internal {
@@ -487,15 +508,15 @@ contract StrategyBalancerMettalexV2 {
         address _stk
     ) external settled {
         require(msg.sender == governance, "!governance");
-        bool hasLong = IERC20(long_token).balanceOf(address(this)) > 0;
-        bool hasShort = IERC20(short_token).balanceOf(address(this)) > 0;
+        bool hasLong = IERC20(longToken).balanceOf(address(this)) > 0;
+        bool hasShort = IERC20(shortToken).balanceOf(address(this)) > 0;
         if (hasLong || hasShort) {
             handleBreach();
         }
 
-        mettalex_vault = _vault;
-        long_token = _ltk;
-        short_token = _stk;
+        mettalexVault = _vault;
+        longToken = _ltk;
+        shortToken = _stk;
 
         _depositInternal();
 
@@ -543,38 +564,42 @@ contract StrategyBalancerMettalexV2 {
         uint256 minAmountOut
     ) internal returns (uint256 tokenAmountOut) {
         require(
-            tokenOut == long_token || tokenOut == short_token,
+            tokenOut == longToken || tokenOut == shortToken,
             "ERR_TOKEN_OUT"
         );
 
         Balancer bPool = Balancer(balancer);
         (uint256 ltkMinted, uint256 stkMinted) = _mintPositions(tokenAmountIn);
 
-        if (tokenOut == long_token) {
-            IERC20(short_token).safeApprove(balancer, stkMinted);
+        if (tokenOut == longToken) {
+            IERC20(shortToken).safeApprove(balancer, stkMinted);
 
             (tokenAmountOut, ) = bPool.swapExactAmountIn(
-                short_token,
+                shortToken,
                 stkMinted,
-                long_token,
+                longToken,
                 1,
                 uint256(-1)
             );
 
             tokenAmountOut = tokenAmountOut.add(ltkMinted);
         } else {
-            IERC20(long_token).safeApprove(balancer, ltkMinted);
+            IERC20(longToken).safeApprove(balancer, ltkMinted);
 
             (tokenAmountOut, ) = bPool.swapExactAmountIn(
-                long_token,
+                longToken,
                 ltkMinted,
-                short_token,
+                shortToken,
                 1,
                 uint256(-1)
             );
 
             tokenAmountOut = tokenAmountOut.add(stkMinted);
         }
+
+        //Rebalance Pool
+        uint256 newSpotPrice = _calculateSpotPrice();
+        _rebalance(newSpotPrice);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
         IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
@@ -585,10 +610,7 @@ contract StrategyBalancerMettalexV2 {
         uint256 tokenAmountIn,
         uint256 minAmountOut
     ) internal returns (uint256 tokenAmountOut) {
-        require(
-            tokenIn == long_token || tokenIn == short_token,
-            "ERR_TOKEN_IN"
-        );
+        require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
 
         Balancer bPool = Balancer(balancer);
         IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
@@ -601,7 +623,9 @@ contract StrategyBalancerMettalexV2 {
             uint256(-1)
         );
 
-        updateSpotAndNormalizeWeights();
+        //Rebalance Pool
+        uint256 newSpotPrice = _calculateSpotPrice();
+        _rebalance(newSpotPrice);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
         IERC20(want).transfer(msg.sender, tokenAmountOut);
@@ -614,12 +638,9 @@ contract StrategyBalancerMettalexV2 {
         uint256 minAmountOut
     ) internal returns (uint256 tokenAmountOut) {
         require(tokenIn != tokenOut, "ERR_SAME_TOKEN_SWAP");
+        require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
         require(
-            tokenIn == long_token || tokenIn == short_token,
-            "ERR_TOKEN_IN"
-        );
-        require(
-            tokenOut == long_token || tokenOut == short_token,
+            tokenOut == longToken || tokenOut == shortToken,
             "ERR_TOKEN_OUT"
         );
 
@@ -646,13 +667,11 @@ contract StrategyBalancerMettalexV2 {
     // This function should return Total valuation of balancer pool.
     // i.e. ( LTK + STK + Coin ) from balancer pool.
     function _getBalancerPoolValue() internal view returns (uint256) {
-        uint256 poolStkBalance = IERC20(short_token).balanceOf(
+        uint256 poolStkBalance = IERC20(shortToken).balanceOf(
             address(balancer)
         );
-        uint256 poolLtkBalance = IERC20(long_token).balanceOf(
-            address(balancer)
-        );
-        uint256 collateralPerUnit = MettalexVault(mettalex_vault)
+        uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
+        uint256 collateralPerUnit = MettalexVault(mettalexVault)
             .collateralPerUnit();
         uint256 totalValuation;
         if (poolStkBalance >= poolLtkBalance) {
