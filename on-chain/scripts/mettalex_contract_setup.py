@@ -791,8 +791,8 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # amount of tokens received
-    logs = strategy.events.Swap.getLogs()
-    amount_out = logs[0]['args']['amountOut']
+    logs = strategy.events.LOG_SWAP.getLogs()
+    amount_out = logs[0]['args']['tokenAmountOut']
     print(
         f'Swap successful from {tokenIn.address} to {tokenOut.address} with received amount = {amount_out}')
 
@@ -815,6 +815,8 @@ def update_spot_and_rebalance(w3, vault, strategy, price):
     strategy.functions.updateSpotAndNormalizeWeights().transact(
         {'from': acct, 'gas': 1_000_000}
     )
+
+
 def after_breach_setup(w3, contracts, coin, balancer, strategy, price=None):
     account = w3.eth.defaultAccount
     if not os.path.isfile('args.json'):
@@ -845,7 +847,7 @@ def after_breach_setup(w3, contracts, coin, balancer, strategy, price=None):
     if price is not None:
         # May be connecting to existing vault, if not then can set tht price here
         set_price(w3, vault, price)
-    
+
     return ltk, stk, vault
 
 
@@ -865,6 +867,24 @@ def handle_breach(w3, strategy):
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     tx_receipt.gasUsed
+
+
+def get_pool_details(strategy, coin, ltk, stk):
+
+    coin_is_bound = strategy.functions.isBound(coin.address).call()
+    ltk_is_bound = strategy.functions.isBound(ltk.address).call()
+    stk_is_bound = strategy.functions.isBound(stk.address).call()
+
+    coin_balance, ltk_balance, stk_balance = (0, 0, 0)
+
+    if (coin_is_bound and ltk_is_bound and stk_is_bound):
+        coin_balance = strategy.functions.getBalance(coin.address).call()
+        ltk_balance = strategy.functions.getBalance(ltk.address).call()
+        stk_balance = strategy.functions.getBalance(stk.address).call()
+
+    swap_fee = strategy.functions.getSwapFee().call()
+
+    return coin_balance, ltk_balance, stk_balance, swap_fee
 
 
 if __name__ == '__main__':
@@ -894,7 +914,7 @@ if __name__ == '__main__':
             w3, admin, contracts=contracts)
     else:
         raise ValueError(f'Unknown action: {args.action}')
-    
+
     coin = deployed_contracts['Coin']
     ltk = deployed_contracts['Long']
     stk = deployed_contracts['Short']

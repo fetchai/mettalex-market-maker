@@ -86,11 +86,12 @@ contract StrategyBalancerMettalexV2 {
         }
     }
 
-    event Swap(
-        address tokenIn,
-        address tokenOut,
-        uint256 amountIn,
-        uint256 amountOut
+    event LOG_SWAP(
+        address indexed caller,
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint256 tokenAmountIn,
+        uint256 tokenAmountOut
     );
 
     constructor(
@@ -204,7 +205,9 @@ contract StrategyBalancerMettalexV2 {
 
         uint256 x = (price.range * 1) / 100;
 
-        if (price.floor.add(x) >= price.spot || price.cap.sub(x) <= price.spot) {
+        if (
+            price.floor.add(x) >= price.spot || price.cap.sub(x) <= price.spot
+        ) {
             wt[0] = wt[0].mul(47).add(1 ether);
             wt[1] = wt[1].mul(47).add(1 ether);
             wt[2] = wt[2].mul(47).add(1 ether);
@@ -565,7 +568,13 @@ contract StrategyBalancerMettalexV2 {
             );
         }
 
-        emit Swap(tokenIn, tokenOut, tokenAmountIn, tokenAmountOut);
+        emit LOG_SWAP(
+            msg.sender,
+            tokenIn,
+            tokenOut,
+            tokenAmountIn,
+            tokenAmountOut
+        );
         bPool.setPublicSwap(false);
     }
 
@@ -779,5 +788,18 @@ contract StrategyBalancerMettalexV2 {
     function setController(address _controller) external {
         require(msg.sender == governance, "!governance");
         controller = _controller;
+    }
+
+    /********** BPool Methods for UI *********/
+    function getBalance(address token) external view returns (uint256) {
+        return Balancer(balancer).getBalance(token);
+    }
+
+    function getSwapFee() external view returns (uint256) {
+        return Balancer(balancer).getSwapFee();
+    }
+
+    function isBound(address token) external view returns (bool) {
+        return Balancer(balancer).isBound(token);
     }
 }
