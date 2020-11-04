@@ -198,10 +198,21 @@ contract StrategyBalancerMettalexV2 {
         //            (1-v)*C*x_s/d
         //        ]
         //        new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
+        wt[0] = price.ds.mul(1 ether).div(price.d);
+        wt[1] = price.dl.mul(1 ether).div(price.d);
+        wt[2] = price.dc.mul(1 ether).div(price.d);
 
-        wt[0] = price.ds.mul(47 ether).div(price.d).add(1 ether);
-        wt[1] = price.dl.mul(47 ether).div(price.d).add(1 ether);
-        wt[2] = price.dc.mul(47 ether).div(price.d).add(1 ether);
+        uint256 x = (price.range * 1) / 100;
+
+        if (price.floor.add(x) >= price.spot || price.cap.sub(x) <= price.spot) {
+            wt[0] = wt[0].mul(47).add(1 ether);
+            wt[1] = wt[1].mul(47).add(1 ether);
+            wt[2] = wt[2].mul(47).add(1 ether);
+        } else {
+            wt[0] = wt[0].mul(50);
+            wt[1] = wt[1].mul(50);
+            wt[2] = wt[2].mul(50);
+        }
 
         //        wt[1] = bal[1].mul(100 ether).mul(price.dl).mul(price.spot.sub(price.floor)).div(price.range).div(d).div(2);
         //        wt[2] = bal[2].mul(100 ether).mul(C).mul(price.cap.sub(price.spot)).div(price.range).div(d).div(2);
