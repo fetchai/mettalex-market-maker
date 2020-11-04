@@ -805,6 +805,18 @@ def get_balance(address, coin, ltk, stk):
     return stk_balance, ltk_balance, coin_balance
 
 
+def update_spot_and_rebalance(w3, vault, strategy, price):
+    acct = w3.eth.defaultAccount
+    tx_hash = vault.functions.updateSpot(price).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    strategy.functions.updateSpotAndNormalizeWeights().transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
     parser.add_argument(

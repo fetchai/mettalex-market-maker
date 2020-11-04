@@ -26,7 +26,7 @@ branches and appropriate CI/CD setup however that is a refinement for later.
   Start a local ganache blockchain with `npx ganache-cli`
 
 ## Python setup
-From this directory the `scripts/deploy_contracts.py` script will deploys or connect the contracts.
+From this directory the `scripts/mettalex_contract_setup.py` script will deploys or connect the contracts.
 We can provide the contract addresses to `scripts/contract-cache/contract_address.json` if we want to connect the existing contracts.
 If the address left blank, it will be automatically deployed by the script.
 
@@ -70,7 +70,7 @@ Or from within IPython console
     import sys
     os.chdir('price-leveraged-token/market-maker/on-chain/scripts')
     sys.path.append(os.getcwd())
-    from deploy_contracts import full_setup, deposit, earn, BalanceReporter, upgrade_strategy, set_price, get_spot_price, swap_amount_in, connect_deployed, withdraw
+    from mettalex_contract_setup import full_setup, deposit, earn, BalanceReporter, upgrade_strategy, set_price, get_spot_price, swap_amount_in, connect_deployed, withdraw
     
     w3, contracts = connect_deployed()
     y_vault = contracts['YVault']

@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 import argparse
 
-from deploy_contracts import connect, connect_contract, create_balancer_pool, full_setup, deploy_contract, get_contracts
+from mettalex_contract_setup import connect, connect_contract, create_balancer_pool, full_setup, deploy_contract, get_contracts
 
 
 def get_addresses(contract_file_name='contract_address.json'):
