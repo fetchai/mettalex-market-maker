@@ -1,6 +1,6 @@
 # This is a helper file to test breach functionality on Python console
 
-from setup_contracts import full_setup, deposit, earn, BalanceReporter, connect_deployed, withdraw, connect_strategy, deploy_contract, get_contracts, whitelist_vault
+from mettalex_contract_setup import connect, deploy, full_setup, deposit, earn, BalanceReporter, connect_deployed, withdraw, deploy_contract, get_contracts, whitelist_vault
 # from setup_testnet_pool import get_spot_price
 import os
 import sys
@@ -8,27 +8,30 @@ import sys
 os.chdir('price-leveraged-token/market-maker/on-chain')
 sys.path.append(os.getcwd())
 
-w3, contracts = connect_deployed()
-y_vault = contracts['YVault']
-coin = contracts['Coin']
-ltk = contracts['Long']
-stk = contracts['Short']
+w3, admin = connect('local', 'admin')
+contracts = get_contracts(w3, 2)
+deployed_contracts = deploy(w3, contracts)
+w3, acc, deployed_contracts = full_setup(w3, admin, deployed_contracts=deployed_contracts, price=2500)
+
+# w3, contracts = connect_deployed()
+y_vault = deployed_contracts['YVault']
+coin = deployed_contracts['Coin']
+ltk = deployed_contracts['Long']
+stk = deployed_contracts['Short']
 
 # Existing Flow
 reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
-balancer = contracts['BPool']
-strategy = contracts['PoolController']
-y_controller = contracts['YController']
+balancer = deployed_contracts['BPool']
+strategy = deployed_contracts['PoolController']
+y_controller = deployed_contracts['YController']
 deposit(w3, y_vault, coin, 200000)
 earn(w3, y_vault)
 reporter.print_balances(y_vault.address, 'Y Vault')
 reporter.print_balances(balancer.address, 'Balancer AMM')
 
 withdraw(w3, y_vault, 11000)
-mVault = contracts['Vault']
+mVault = deployed_contracts['Vault']
 
-# update address returned by: python3 setup_contracts.py -a deploy
-strategy = connect_strategy(w3, '0xC5aFE31AE505594B190AC71EA689B58139d1C354')
 acct = w3.eth.defaultAccount
 
 mVault.functions.isSettled().call()
@@ -47,7 +50,7 @@ balancer.functions.getSpotPrice(ltk.address, coin.address).call()
 
 mVault.functions.priceSpot().call()
 
-mVault.functions.updateSpot(3000000).transact(
+mVault.functions.updateSpot(3000).transact(
     {'from': acct, 'gas': 1_000_000}
 )
 
@@ -56,7 +59,6 @@ balancer.functions.getDenormalizedWeight(stk.address).call()
 balancer.functions.getDenormalizedWeight(coin.address).call()
 mVault.functions.priceSpot().call()
 balancer.functions.MAX_TOTAL_WEIGHT().call()
-strategy.functions.updateSpotAndNormalizeWeightsT().call()
 
 strategy.functions.updateSpotAndNormalizeWeights().transact(
     {'from': acct, 'gas': 1_000_000}
@@ -68,15 +70,13 @@ balancer.functions.getDenormalizedWeight(coin.address).call()
 mVault.functions.priceSpot().call()
 
 # check handleBreach should fail if vault not breached
-strategy.functions.handleBreach().transact(
-    {'from': acct, 'gas': 1_000_000}
-)
+try:
+    strategy.functions.handleBreach().transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+except:
+    print("Vault not breached")
 
-strategy.functions.supply().call()
-
-strategy.functions.deposit().transact(
-    {'from': acct, 'gas': 1_000_000}
-)
 strategy.functions.supply().call()
 
 withdraw(w3, y_vault, 11000)
@@ -123,9 +123,12 @@ tx_receipt.gasUsed
 
 
 # should fail deposit for breached contracts
-strategy.functions.deposit().transact(
-    {'from': acct, 'gas': 1_000_000}
-)
+try:
+    strategy.functions.deposit().transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+except:
+    print("Vault breached")
 
 # should not fail
 withdraw(w3, y_vault, 11000)
@@ -141,18 +144,18 @@ stk = deploy_contract(w3, contracts['Short'], 'Short Position', 'STOK', 6, 2)
 vault = deploy_contract(
     w3, contracts['Vault'],
     'Mettalex Vault', 2, coin.address, ltk.address, stk.address,
-    acct, balancer.address, 4000000, 3000000, 100000000, 300
+    acct, balancer.address, 3000, 2000, 1, 300
 )
 
 whitelist_vault(w3, vault, ltk, stk)
-tx_hash = vault.functions.updateSpot(3500000).transact(
+tx_hash = vault.functions.updateSpot(2500).transact(
     {'from': acct, 'gas': 1_000_000}
 )
 tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
-strategy.functions.long_token().call()
-strategy.functions.short_token().call()
-strategy.functions.mettalex_vault().call()
+strategy.functions.longToken().call()
+strategy.functions.shortToken().call()
+strategy.functions.mettalexVault().call()
 strategy.functions.isBreachHandled().call()
 
 tx_hash = strategy.functions.updateCommodityAfterBreach(vault.address, ltk.address, stk.address).transact(
@@ -161,7 +164,7 @@ tx_hash = strategy.functions.updateCommodityAfterBreach(vault.address, ltk.addre
 
 tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
-strategy.functions.long_token().call()
-strategy.functions.short_token().call()
-strategy.functions.mettalex_vault().call()
+strategy.functions.longToken().call()
+strategy.functions.shortToken().call()
+strategy.functions.mettalexVault().call()
 strategy.functions.isBreachHandled().call()

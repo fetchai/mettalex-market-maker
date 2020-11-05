@@ -1,3 +1,5 @@
+cd ..
+
 cd mettalex-balancer
 npx oz compile
 

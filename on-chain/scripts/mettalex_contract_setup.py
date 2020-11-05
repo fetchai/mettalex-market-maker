@@ -5,6 +5,9 @@ import json
 import argparse
 import shutil
 
+PRICE_DECIMALS = 1
+PRICE_SCALE = 10 * PRICE_DECIMALS
+
 
 def read_config():
     # Read configuration from local file system
@@ -56,7 +59,7 @@ def connect(network, account='user'):
     return w3, admin
 
 
-def get_contracts(w3):
+def get_contracts(w3, strategy_version=1):
     """
         make --directory=mettalex-balancer deploy_pool_factory
         make --directory=mettalex-balancer deploy_balancer_amm
@@ -71,27 +74,31 @@ def get_contracts(w3):
         :return:
     """
     bfactory_build_file = Path(
-        __file__).parent / 'mettalex-balancer' / 'build' / 'contracts' / 'BFactory.json'
+        __file__).parent / ".." / 'mettalex-balancer' / 'build' / 'contracts' / 'BFactory.json'
     bpool_build_file = Path(
-        __file__).parent / 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
+        __file__).parent / ".." / 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
 
     # Use Mettalex vault version of CoinToken rather than USDT in mettalex-coin to avoid Solidity version issue
-    coin_build_file = Path(__file__).parent / 'mettalex-vault' / \
+    coin_build_file = Path(__file__).parent / ".." / 'mettalex-vault' / \
         'build' / 'contracts' / 'CoinToken.json'
     # Use position token for both long and short tokens
     position_build_file = Path(
-        __file__).parent / 'mettalex-vault' / 'build' / 'contracts' / 'PositionToken.json'
+        __file__).parent / ".." / 'mettalex-vault' / 'build' / 'contracts' / 'PositionToken.json'
     mettalex_vault_build_file = Path(
-        __file__).parent / 'mettalex-vault' / 'build' / 'contracts' / 'Vault.json'
+        __file__).parent / ".." / 'mettalex-vault' / 'build' / 'contracts' / 'Vault.json'
 
     yvault_controller_build_file = Path(
-        __file__).parent / 'mettalex-yearn' / 'build' / 'contracts' / 'Controller.json'
+        __file__).parent / ".." / 'mettalex-yearn' / 'build' / 'contracts' / 'Controller.json'
     yvault_build_file = Path(
-        __file__).parent / 'mettalex-yearn' / 'build' / 'contracts' / 'yVault.json'
+        __file__).parent / ".." / 'mettalex-yearn' / 'build' / 'contracts' / 'yVault.json'
 
-    # May need to deploy pool controller via openzeppelin cli for upgradeable contract
+    # Strategy contracts
+    build_file_name = 'StrategyBalancerMettalex.json'
+    if (strategy_version == 2):
+        build_file_name = 'StrategyBalancerMettalexV2.json'
+
     pool_controller_build_file = Path(
-        __file__).parent / 'pool-controller' / 'build' / 'contracts' / 'StrategyBalancerMettalex.json'
+        __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / build_file_name
 
     contracts = {
         'BFactory': create_contract(w3, bfactory_build_file),
@@ -141,7 +148,11 @@ def connect_contract(w3, contract, address):
     return deployed_contract
 
 
-def connect_deployed(w3, contracts, contract_file='contract_address.json', cache_file='contract_cache.json'):
+def connect_deployed(w3, contracts, contract_file_name='contract_address.json', cache_file_name='contract_cache.json'):
+    contract_file = Path(__file__).parent / \
+        'contract-cache' / contract_file_name
+    cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
+
     if not os.path.isfile(contract_file):
         print('No address file')
         return
@@ -151,11 +162,10 @@ def connect_deployed(w3, contracts, contract_file='contract_address.json', cache
 
     with open('args.json', 'r') as f:
         args = json.load(f)
-    with open(contract_file, 'r') as f:
+    with open(cache_file, 'r') as f:
         contract_cache = json.load(f)
 
-    network = get_network(w3)
-
+    account = w3.eth.defaultAccount
     deployed_contracts = {}
 
     for k in contracts.keys():
@@ -164,7 +174,10 @@ def connect_deployed(w3, contracts, contract_file='contract_address.json', cache
                 w3, contracts[k], contract_cache[k])
 
         else:
-            if k == 'BPool':
+            if k == 'BFactory':
+                deployed_contracts[k] = deploy_contract(w3, contracts[k])
+
+            elif k == 'BPool':
                 deployed_contracts[k] = create_balancer_pool(
                     w3, contracts[k], connect_contract(w3, contracts['BFactory'], contract_cache['BFactory']))
 
@@ -179,9 +192,17 @@ def connect_deployed(w3, contracts, contract_file='contract_address.json', cache
             elif k == 'PoolController':
                 deployed_contracts[k] = deploy_contract(
                     w3, contracts[k], contract_cache['YController'], contract_cache['Coin'], contract_cache['BPool'], contract_cache['Vault'], contract_cache['Long'], contract_cache['Short'])
+            elif k == 'Vault':
+                tok_version = args['Long'][3]
+                cap = args['Vault'][0] * PRICE_SCALE
+                floor = args['Vault'][1] * PRICE_SCALE
+                multiplier = args['Vault'][2]
+                feeRate = args['Vault'][3]
+                deployed_contracts[k] = deploy_contract(w3, contracts[k], 'Mettalex Vault', tok_version, contract_cache['Coin'], contract_cache['Long'], contract_cache['Short'],
+                                                        account, contract_cache['BPool'], cap, floor, multiplier, feeRate)
             else:
                 deployed_contracts[k] = deploy_contract(
-                    w3, contracts[k], *args[network][k])
+                    w3, contracts[k], *args[k])
         contract_cache[k] = deployed_contracts[k].address
 
     with open(cache_file, 'w') as f:
@@ -189,22 +210,38 @@ def connect_deployed(w3, contracts, contract_file='contract_address.json', cache
     return deployed_contracts
 
 
-def deploy(w3, contracts, cache_file='contract_cache.json'):
-    acct = w3.eth.defaultAccount
+def deploy(w3, contracts, cache_file_name='contract_cache.json'):
+    cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
+    account = w3.eth.defaultAccount
+
+    if not os.path.isfile('args.json'):
+        print('No args file')
+        return
+
+    with open('args.json', 'r') as f:
+        args = json.load(f)
+
+    # Balancer
     balancer_factory = deploy_contract(w3, contracts['BFactory'])
     balancer = create_balancer_pool(w3, contracts['BPool'], balancer_factory)
-    coin = deploy_contract(w3, contracts['Coin'], 'Tether USD', 'USDT', 18)
-    tok_version = 1
-    ltk = deploy_contract(
-        w3, contracts['Long'], 'Long Position', 'LTOK', 6, tok_version)
-    stk = deploy_contract(
-        w3, contracts['Short'], 'Short Position', 'STOK', 6, tok_version)
+
+    # Mettalex Coin and Vault
+    coin = deploy_contract(w3, contracts['Coin'], *args['Coin'])
+    ltk = deploy_contract(w3, contracts['Long'], *args['Long'])
+    stk = deploy_contract(w3, contracts['Short'], *args['Short'])
+
+    tok_version = args['Long'][3]
+    cap = args['Vault'][0] * PRICE_SCALE
+    floor = args['Vault'][1] * PRICE_SCALE
+    multiplier = args['Vault'][2]
+    feeRate = args['Vault'][3]
     vault = deploy_contract(
         w3, contracts['Vault'],
         'Mettalex Vault', tok_version, coin.address, ltk.address, stk.address,
-        acct, balancer.address, 3000000, 2000000, 100000000, 300
-    )
-    y_controller = deploy_contract(w3, contracts['YController'], acct)
+        account, balancer.address, cap, floor, multiplier, feeRate)
+
+    # Liquidity Provider
+    y_controller = deploy_contract(w3, contracts['YController'], account)
     y_vault = deploy_contract(
         w3, contracts['YVault'], coin.address, y_controller.address)
 
@@ -246,12 +283,25 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     # Find pool address from contract event
-    receipt = balancer_factory.events.LOG_NEW_POOL().processReceipt(tx_receipt)
+    receipt = balancer_factory.events.LOG_NEW_POOL().getLogs()
     pool_address = receipt[0]['args']['pool']
     balancer = w3.eth.contract(
         address=pool_address,
         abi=pool_contract.abi
     )
+    return balancer
+
+
+def connect_balancer(w3):
+    build_file = Path(__file__).parent / ".." / \
+        'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
+    with open(build_file, 'r') as f:
+        contract_details = json.load(f)
+
+    # get abi
+    abi = contract_details['abi']
+    balancer = w3.eth.contract(
+        abi=abi, address='0xcC5f0a600fD9dC5Dd8964581607E5CC0d22C5A78')
     return balancer
 
 
@@ -289,7 +339,7 @@ def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vaul
 
 
 def connect_strategy(w3, address):
-    build_file = Path(__file__).parent / 'pool-controller' / \
+    build_file = Path(__file__).parent / ".." / 'pool-controller' / \
         'build' / 'contracts' / 'StrategyBalancerMettalex.json'
     with open(build_file, 'r') as f:
         contract_details = json.load(f)
@@ -300,7 +350,7 @@ def connect_strategy(w3, address):
     return strategy
 
 
-def full_setup(w3, admin, deployed_contracts=None, price=None):
+def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None):
     if deployed_contracts is None:
         print('Deploying contracts')
         deployed_contracts = deploy(w3, contracts)
@@ -422,6 +472,14 @@ def get_vault_details(w3, contracts, address=None):
     stok_address = vault.functions.shortPositionToken().call()
     stok = w3.eth.contract(address=stok_address, abi=contracts['Short'].abi)
 
+    def token_details(tok):
+        return {
+            'adress': tok.address,
+            'name': tok.functions.name().call(),
+            'symbol': tok.functions.symbol().call(),
+            'decimals': tok.functions.decimals().call()
+        }
+
     name = vault.functions.contractName().call()
     vault_floor = vault.functions.priceFloor().call()
     vault_cap = vault.functions.priceCap().call()
@@ -429,10 +487,11 @@ def get_vault_details(w3, contracts, address=None):
     vault_spot = vault.functions.priceSpot().call()
     vault_details = {
         'vault': vault,
-        'coin': coin,
-        'ltok': ltok,
-        'stok': stok,
+        'coin': token_details(coin),
+        'ltok': token_details(ltok),
+        'stok': token_details(stok),
         'name': name,
+        'oracle': vault.functions.oracle().call(),
         'floor': vault_floor,
         'cap': vault_cap,
         'spot': vault_spot,
@@ -552,6 +611,7 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, mi
     ).transact(
         {'from': acct, 'gas': 1_000_000}
     )
+
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     return tx_hash
 
@@ -601,6 +661,232 @@ def withdraw(w3, y_vault, amount, customAccount=None):
     print(f'Withdraw from YVault. Amount: {amount} shares. Withdrawer: {acct}')
 
 
+def distribute_coin(w3, coin, amount=200000, customAccount=None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
+    transfer_amount = amount * 10 ** (coin.functions.decimals().call())
+    tx_hash = coin.functions.transfer(acct, transfer_amount).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(
+        f'Coin distribution successful. From = {w3.eth.defaultAccount} To = {acct} Amount = {amount}')
+
+
+def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=None):
+    acct = w3.eth.defaultAccount
+    if customAccount:
+        acct = customAccount
+    collateralAmount_unitless = collateralAmount * \
+        10 ** (coin.functions.decimals().call())
+    tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
+        {'from': customAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    tx_hash = vault.functions.mintFromCollateralAmount(collateralAmount_unitless).transact(
+        {'from': customAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(
+        f'Position tokens minted. Locked Coin: {collateralAmount} Minter: {acct}')
+
+
+def simulate_scenario(w3, admin):
+    w3, admin, deployed_contracts = full_setup(w3, admin)
+
+    print('\nSystem Setup Completed\n')
+
+    balancer_factory = deployed_contracts["BFactory"]
+    balancer = deployed_contracts["BPool"]
+    coin = deployed_contracts["Coin"]
+    ltk = deployed_contracts["Long"]
+    stk = deployed_contracts["Short"]
+    vault = deployed_contracts["Vault"]
+    y_controller = deployed_contracts["YVault"]
+    y_vault = deployed_contracts["YController"]
+    strategy = deployed_contracts["PoolController"]
+
+    reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
+
+    # accounts[0] or default account hols all the tokens.
+    user1 = w3.eth.accounts[1]
+    user2 = w3.eth.accounts[2]
+    user3 = w3.eth.accounts[3]
+    user4 = w3.eth.accounts[4]
+
+    distribute_coin(w3, coin, 200000, user1)
+    distribute_coin(w3, coin, 200000, user2)
+    distribute_coin(w3, coin, 200000, user3)
+    distribute_coin(w3, coin, 200000, user4)
+
+    mintPositionTokens(w3, vault, coin, 100000, user2)
+    mintPositionTokens(w3, vault, coin, 100000, user3)
+    mintPositionTokens(w3, vault, coin, 100000, user4)
+
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
+
+    deposit(w3, y_vault, coin, 200000, user1)
+    deposit(w3, y_vault, coin, 100000, user2)
+    deposit(w3, y_vault, coin, 100000, user3)
+    deposit(w3, y_vault, coin, 100000, user4)
+    deposit(w3, y_vault, coin, 200000)
+    earn(w3, y_vault)
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
+
+    swap_amount_in(w3, balancer, ltk, 500, stk, user2, 100)
+    swap_amount_in(w3, balancer, stk, 500, ltk, user3, 100)
+    swap_amount_in(w3, balancer, ltk, 500, stk, user4, 100)
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+    reporter.print_balances(user2, 'User 2')
+    reporter.print_balances(user3, 'User 3')
+    reporter.print_balances(user4, 'User 4')
+
+    withdraw(w3, y_vault, 200000)
+    withdraw(w3, y_vault, 200000, user1)
+
+    reporter.print_balances(y_vault.address, 'Y Vault')
+    reporter.print_balances(balancer.address, 'Balancer AMM')
+    reporter.print_balances(w3.eth.defaultAccount, 'User 0')
+    reporter.print_balances(user1, 'User 1')
+
+
+def update_oracle(w3, admin, vault, oracle, vault_address=None):
+    # Set oracle
+    if vault_address is not None:
+        vault = w3.eth.contract(abi=vault.abi, address=vault_address)
+    tx_hash = vault.functions.updateOracle(oracle).transact(
+        {'from': admin.address, 'gas': 1_000_000})
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(vault.functions.oracle().call())
+
+
+def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
+    # approve
+    tx_hash = tokenIn.functions.approve(strategy.address, amountIn).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    # swap
+    tx_hash = strategy.functions.swap(tokenIn.address, amountIn, tokenOut.address, amountOut).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    # amount of tokens received
+    logs = strategy.events.LOG_SWAP.getLogs()
+    amount_out = logs[0]['args']['tokenAmountOut']
+    print(
+        f'Swap successful from {tokenIn.address} to {tokenOut.address} with received amount = {amount_out}')
+
+
+def get_balance(address, coin, ltk, stk):
+    stk_balance = stk.functions.balanceOf(address).call()/10**5
+    ltk_balance = ltk.functions.balanceOf(address).call()/10**5
+    coin_balance = coin.functions.balanceOf(address).call()/10**6
+    print(f'Coin: {coin_balance}, Long: {ltk_balance} and Short: {stk_balance}')
+    return stk_balance, ltk_balance, coin_balance
+
+
+def update_spot_and_rebalance(w3, vault, strategy, price):
+    acct = w3.eth.defaultAccount
+    tx_hash = vault.functions.updateSpot(price).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    strategy.functions.updateSpotAndNormalizeWeights().transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+
+
+def after_breach_setup(w3, contracts, coin, balancer, strategy, price=None):
+    account = w3.eth.defaultAccount
+    if not os.path.isfile('args.json'):
+        print('No args file')
+        return
+
+    with open('args.json', 'r') as f:
+        args = json.load(f)
+
+    # contract deployment:
+    ltk = deploy_contract(w3, contracts['Long'], *args['Long'])
+    stk = deploy_contract(w3, contracts['Short'], *args['Short'])
+
+    tok_version = args['Long'][3]
+    cap = args['Vault'][0] * PRICE_SCALE
+    floor = args['Vault'][1] * PRICE_SCALE
+    multiplier = args['Vault'][2]
+    feeRate = args['Vault'][3]
+    vault = deploy_contract(
+        w3, contracts['Vault'],
+        'Mettalex Vault', tok_version, coin.address, ltk.address, stk.address,
+        account, balancer.address, cap, floor, multiplier, feeRate)
+
+    # Contract setup:
+    print('Whitelisting Mettalex vault to mint position tokens')
+    whitelist_vault(w3, vault, ltk, stk)
+
+    if price is not None:
+        # May be connecting to existing vault, if not then can set tht price here
+        set_price(w3, vault, price)
+
+    return ltk, stk, vault
+
+
+def update_commodity_after_breach(w3, strategy, vault, ltk, stk):
+    acct = w3.eth.defaultAccount
+    tx_hash = strategy.functions.updateCommodityAfterBreach(vault.address, ltk.address, stk.address).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print(f'Updated Vault {vault.address}')
+
+
+def handle_breach(w3, strategy):
+    acct = w3.eth.defaultAccount
+    tx_hash = strategy.functions.handleBreach().transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    tx_receipt.gasUsed
+
+
+def get_pool_details(strategy, coin, ltk, stk):
+
+    coin_is_bound = strategy.functions.isBound(coin.address).call()
+    ltk_is_bound = strategy.functions.isBound(ltk.address).call()
+    stk_is_bound = strategy.functions.isBound(stk.address).call()
+
+    coin_balance, ltk_balance, stk_balance = (0, 0, 0)
+
+    if (coin_is_bound and ltk_is_bound and stk_is_bound):
+        coin_balance = strategy.functions.getBalance(coin.address).call()
+        ltk_balance = strategy.functions.getBalance(ltk.address).call()
+        stk_balance = strategy.functions.getBalance(stk.address).call()
+
+    swap_fee = strategy.functions.getSwapFee().call()
+
+    return coin_balance, ltk_balance, stk_balance, swap_fee
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
     parser.add_argument(
@@ -624,14 +910,20 @@ if __name__ == '__main__':
         deployed_contracts = connect_deployed(w3, contracts)
     elif args.action == 'setup':
         #  will deploy and do the full setup
-        w3, acc, deployed_contracts = full_setup(w3, admin)
+        w3, admin, deployed_contracts = full_setup(
+            w3, admin, contracts=contracts)
     else:
         raise ValueError(f'Unknown action: {args.action}')
 
-    reporter = BalanceReporter(
-        w3, deployed_contracts['Long'], deployed_contracts['Long'], deployed_contracts['Short'], deployed_contracts['YVault'])
-
+    coin = deployed_contracts['Coin']
+    ltk = deployed_contracts['Long']
+    stk = deployed_contracts['Short']
+    vault = deployed_contracts['Vault']
+    balancer = deployed_contracts['BPool']
     y_vault = deployed_contracts['YVault']
+    strategy = deployed_contracts['PoolController']
+
+    reporter = BalanceReporter(w3, ltk, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     # Print user balance
