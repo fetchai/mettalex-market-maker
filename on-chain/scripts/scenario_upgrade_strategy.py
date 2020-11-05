@@ -1,5 +1,5 @@
 # This is a helper file to test breach functionality on Python console
-from deploy_contracts import connect, deploy, get_contracts, full_setup, deposit, earn, upgrade_strategy, BalanceReporter, connect_deployed, withdraw, connect_strategy, deploy_contract, get_contracts, whitelist_vault
+from mettalex_contract_setup import connect, deploy, get_contracts, full_setup, deposit, earn, upgrade_strategy, BalanceReporter, connect_deployed, withdraw, connect_strategy, deploy_contract, get_contracts, whitelist_vault
 
 # setup
 w3, admin = connect('local', 'admin')

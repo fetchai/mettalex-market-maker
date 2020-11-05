@@ -59,7 +59,7 @@ def connect(network, account='user'):
     return w3, admin
 
 
-def get_contracts(w3):
+def get_contracts(w3, strategy_version=1):
     """
         make --directory=mettalex-balancer deploy_pool_factory
         make --directory=mettalex-balancer deploy_balancer_amm
@@ -92,9 +92,13 @@ def get_contracts(w3):
     yvault_build_file = Path(
         __file__).parent / ".." / 'mettalex-yearn' / 'build' / 'contracts' / 'yVault.json'
 
-    # May need to deploy pool controller via openzeppelin cli for upgradeable contract
+    # Strategy contracts
+    build_file_name = 'StrategyBalancerMettalex.json'
+    if (strategy_version == 2):
+        build_file_name = 'StrategyBalancerMettalexV2.json'
+
     pool_controller_build_file = Path(
-        __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / 'StrategyBalancerMettalex.json'
+        __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / build_file_name
 
     contracts = {
         'BFactory': create_contract(w3, bfactory_build_file),
@@ -279,7 +283,7 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     # Find pool address from contract event
-    receipt = balancer_factory.events.LOG_NEW_POOL().processReceipt(tx_receipt)
+    receipt = balancer_factory.events.LOG_NEW_POOL().getLogs()
     pool_address = receipt[0]['args']['pool']
     balancer = w3.eth.contract(
         address=pool_address,
@@ -607,6 +611,7 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, mi
     ).transact(
         {'from': acct, 'gas': 1_000_000}
     )
+
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     return tx_hash
 
@@ -772,6 +777,44 @@ def update_oracle(w3, admin, vault, oracle, vault_address=None):
     print(vault.functions.oracle().call())
 
 
+def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
+    # approve
+    tx_hash = tokenIn.functions.approve(strategy.address, amountIn).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    # swap
+    tx_hash = strategy.functions.swap(tokenIn.address, amountIn, tokenOut.address, amountOut).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    # amount of tokens received
+    logs = strategy.events.Swap.getLogs()
+    amount_out = logs[0]['args']['amountOut']
+    print(
+        f'Swap successful from {tokenIn.address} to {tokenOut.address} with received amount = {amount_out}')
+
+
+def get_balance(address, coin, ltk, stk):
+    stk_balance = stk.functions.balanceOf(address).call()/10**5
+    ltk_balance = ltk.functions.balanceOf(address).call()/10**5
+    coin_balance = coin.functions.balanceOf(address).call()/10**6
+    print(f'Coin: {coin_balance}, Long: {ltk_balance} and Short: {stk_balance}')
+    return stk_balance, ltk_balance, coin_balance
+
+
+def update_spot_and_rebalance(w3, vault, strategy, price):
+    acct = w3.eth.defaultAccount
+    tx_hash = vault.functions.updateSpot(price).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
+    strategy.functions.updateSpotAndNormalizeWeights().transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
 def after_breach_setup(w3, contracts, coin, balancer, strategy, price=None):
     account = w3.eth.defaultAccount
     if not os.path.isfile('args.json'):
