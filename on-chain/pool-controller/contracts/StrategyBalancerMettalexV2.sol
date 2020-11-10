@@ -222,7 +222,7 @@ contract StrategyBalancerMettalexV2 {
         return wt;
     }
 
-    function updateSpotAndNormalizeWeights() public notSettled {
+    function updateSpotAndNormalizeWeights() external notSettled {
         uint256 spotPrice = MettalexVault(mettalexVault).priceSpot();
         _rebalance(spotPrice);
     }
@@ -687,14 +687,14 @@ contract StrategyBalancerMettalexV2 {
         //get short price values in want
         if (poolStkBalance != 0) {
             uint256 stkSpot = bpool.getSpotPriceSansFee(want, shortToken);
-            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e19);
+            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e18);
             totalValuation = totalValuation.add(totalValueInCoin);
         }
 
         //get long price values in want
         if (poolLtkBalance != 0) {
             uint256 ltkSpot = bpool.getSpotPriceSansFee(want, longToken);
-            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e19);
+            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e18);
             totalValuation = totalValuation.add(totalValueInCoin);
         }
         return totalValuation;
