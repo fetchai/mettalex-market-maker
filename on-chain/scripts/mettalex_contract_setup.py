@@ -785,7 +785,7 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # swap
-    tx_hash = strategy.functions.swap(tokenIn.address, amountIn, tokenOut.address, amountOut).transact(
+    tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut, 1).transact(
         {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)

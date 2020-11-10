@@ -537,12 +537,13 @@ contract StrategyBalancerMettalexV2 {
         isBreachHandled = false;
     }
 
-    function swap(
+    function swapExactAmountIn(
         address tokenIn,
         uint256 tokenAmountIn,
         address tokenOut,
-        uint256 minAmountOut
-    ) external returns (uint256 tokenAmountOut) {
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) external returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
 
         //get tokens
@@ -589,33 +590,15 @@ contract StrategyBalancerMettalexV2 {
         );
 
         Balancer bPool = Balancer(balancer);
-        (uint256 ltkMinted, uint256 stkMinted) = _mintPositions(tokenAmountIn);
+        IERC20(want).safeApprove(balancer, tokenAmountIn);
 
-        if (tokenOut == longToken) {
-            IERC20(shortToken).safeApprove(balancer, stkMinted);
-
-            (tokenAmountOut, ) = bPool.swapExactAmountIn(
-                shortToken,
-                stkMinted,
-                longToken,
-                1,
-                uint256(-1)
-            );
-
-            tokenAmountOut = tokenAmountOut.add(ltkMinted);
-        } else {
-            IERC20(longToken).safeApprove(balancer, ltkMinted);
-
-            (tokenAmountOut, ) = bPool.swapExactAmountIn(
-                longToken,
-                ltkMinted,
-                shortToken,
-                1,
-                uint256(-1)
-            );
-
-            tokenAmountOut = tokenAmountOut.add(stkMinted);
-        }
+        (tokenAmountOut, ) = bPool.swapExactAmountIn(
+            want,
+            tokenAmountIn,
+            tokenOut,
+            1,
+            uint256(-1)
+        );
 
         //Rebalance Pool
         uint256 newSpotPrice = _calculateSpotPrice();
@@ -712,21 +695,19 @@ contract StrategyBalancerMettalexV2 {
         address toToken,
         uint256 fromTokenAmount
     ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
-        require(Balancer(bPoolAddress).isBound(fromToken));
-        require(Balancer(bPoolAddress).isBound(toToken));
-        uint256 swapFee = Balancer(bPoolAddress).getSwapFee();
+        Balancer bpool = Balancer(balancer);
 
-        uint256 tokenBalanceIn = Balancer(bPoolAddress).getBalance(fromToken);
-        uint256 tokenBalanceOut = Balancer(bPoolAddress).getBalance(toToken);
+        require(bpool.isBound(fromToken));
+        require(bpool.isBound(toToken));
+        uint256 swapFee = bpool.getSwapFee();
 
-        uint256 tokenWeightIn = Balancer(bPoolAddress).getDenormalizedWeight(
-            fromToken
-        );
-        uint256 tokenWeightOut = Balancer(bPoolAddress).getDenormalizedWeight(
-            toToken
-        );
+        uint256 tokenBalanceIn = bpool.getBalance(fromToken);
+        uint256 tokenBalanceOut = bpool.getBalance(toToken);
 
-        tokensReturned = Balancer(bPoolAddress).calcOutGivenIn(
+        uint256 tokenWeightIn = bpool.getDenormalizedWeight(fromToken);
+        uint256 tokenWeightOut = bpool.getDenormalizedWeight(toToken);
+
+        tokensReturned = bpool.calcOutGivenIn(
             tokenBalanceIn,
             tokenWeightIn,
             tokenBalanceOut,
@@ -735,10 +716,7 @@ contract StrategyBalancerMettalexV2 {
             swapFee
         );
 
-        uint256 spotPrice = Balancer(bPoolAddress).getSpotPrice(
-            fromToken,
-            toToken
-        );
+        uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
         uint256 effectivePrice = ((fromTokenAmount * 10**18) / tokensReturned);
         priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
     }
@@ -749,21 +727,19 @@ contract StrategyBalancerMettalexV2 {
         address toToken,
         uint256 toTokenAmount
     ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
-        require(Balancer(bPoolAddress).isBound(fromToken));
-        require(Balancer(bPoolAddress).isBound(toToken));
-        uint256 swapFee = Balancer(bPoolAddress).getSwapFee();
+        Balancer bpool = Balancer(balancer);
 
-        uint256 tokenBalanceIn = Balancer(bPoolAddress).getBalance(fromToken);
-        uint256 tokenBalanceOut = Balancer(bPoolAddress).getBalance(toToken);
+        require(bpool.isBound(fromToken));
+        require(bpool.isBound(toToken));
+        uint256 swapFee = bpool.getSwapFee();
 
-        uint256 tokenWeightIn = Balancer(bPoolAddress).getDenormalizedWeight(
-            fromToken
-        );
-        uint256 tokenWeightOut = Balancer(bPoolAddress).getDenormalizedWeight(
-            toToken
-        );
+        uint256 tokenBalanceIn = bpool.getBalance(fromToken);
+        uint256 tokenBalanceOut = bpool.getBalance(toToken);
 
-        tokensReturned = Balancer(bPoolAddress).calcInGivenOut(
+        uint256 tokenWeightIn = bpool.getDenormalizedWeight(fromToken);
+        uint256 tokenWeightOut = bpool.getDenormalizedWeight(toToken);
+
+        tokensReturned = bpool.calcInGivenOut(
             tokenBalanceIn,
             tokenWeightIn,
             tokenBalanceOut,
@@ -772,10 +748,7 @@ contract StrategyBalancerMettalexV2 {
             swapFee
         );
 
-        uint256 spotPrice = Balancer(bPoolAddress).getSpotPrice(
-            fromToken,
-            toToken
-        );
+        uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
         uint256 effectivePrice = ((tokensReturned * 10**18) / toTokenAmount);
         priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
     }
@@ -788,6 +761,11 @@ contract StrategyBalancerMettalexV2 {
     function setController(address _controller) external {
         require(msg.sender == governance, "!governance");
         controller = _controller;
+    }
+
+    function setSwapFee(uint256 _swapFee) external {
+        require(msg.sender == governance, "!governance");
+        Balancer(balancer).setSwapFee(_swapFee);
     }
 
     /********** BPool Methods for UI *********/
