@@ -669,22 +669,33 @@ contract StrategyBalancerMettalexV2 {
 
     // This function should return Total valuation of balancer pool.
     // i.e. ( LTK + STK + Coin ) from balancer pool.
-    function _getBalancerPoolValue() internal view returns (uint256) {
+    function _getBalancerPoolValue()
+        internal
+        view
+        returns (uint256 totalValuation)
+    {
         uint256 poolStkBalance = IERC20(shortToken).balanceOf(
             address(balancer)
         );
         uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
-        uint256 collateralPerUnit = MettalexVault(mettalexVault)
-            .collateralPerUnit();
-        uint256 totalValuation;
-        if (poolStkBalance >= poolLtkBalance) {
-            totalValuation = IERC20(want).balanceOf(address(balancer)).add(
-                poolLtkBalance.mul(collateralPerUnit)
-            );
-        } else {
-            totalValuation = IERC20(want).balanceOf(address(balancer)).add(
-                poolStkBalance.mul(collateralPerUnit)
-            );
+
+        totalValuation = IERC20(want).balanceOf(address(balancer));
+        Balancer bpool = Balancer(balancer);
+
+        //1e19 = (18 + 6 - 5) where (MAX_BONE + tok_in_decimal - tok_out_decimals)
+
+        //get short price values in want
+        if (poolStkBalance != 0) {
+            uint256 stkSpot = bpool.getSpotPriceSansFee(want, shortToken);
+            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e19);
+            totalValuation = totalValuation.add(totalValueInCoin);
+        }
+
+        //get long price values in want
+        if (poolLtkBalance != 0) {
+            uint256 ltkSpot = bpool.getSpotPriceSansFee(want, longToken);
+            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e19);
+            totalValuation = totalValuation.add(totalValueInCoin);
         }
         return totalValuation;
     }
