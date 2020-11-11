@@ -197,9 +197,13 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
                 cap = args['Vault'][0] * PRICE_SCALE
                 floor = args['Vault'][1] * PRICE_SCALE
                 multiplier = args['Vault'][2]
-                feeRate = args['Vault'][3]
-                deployed_contracts[k] = deploy_contract(w3, contracts[k], 'Mettalex Vault', tok_version, contract_cache['Coin'], contract_cache['Long'], contract_cache['Short'],
-                                                        account, contract_cache['BPool'], cap, floor, multiplier, feeRate)
+                fee_rate = args['Vault'][3]
+                vault_name = args['Vault'][4]
+                oracle = args['Vault'][5]
+                if not oracle:
+                    oracle = account
+                deployed_contracts[k] = deploy_contract(w3, contracts[k], vault_name, tok_version, contract_cache['Coin'], contract_cache['Long'], contract_cache['Short'],
+                                                        oracle, contract_cache['BPool'], cap, floor, multiplier, fee_rate)
             else:
                 deployed_contracts[k] = deploy_contract(
                     w3, contracts[k], *args[k])
@@ -336,6 +340,36 @@ def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vaul
 
     strategy = connect_strategy(w3, new_strategy.address)
     return strategy
+
+
+def upgrade_strategy_v2(w3, contracts, strategy, y_controller, coin, balancer, vault, ltk, stk):
+
+    # Create instance of new strategy
+    pool_controller_build_file = Path(
+        __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / 'StrategyBalancerMettalexV2.json'
+
+    strategy_v2 = create_contract(w3, pool_controller_build_file)
+
+    # deploy new strategy
+    new_strategy = deploy_contract(
+        w3,
+        strategy_v2,
+        y_controller.address,
+        coin.address,
+        balancer.address,
+        vault.address,
+        ltk.address,
+        stk.address
+    )
+
+    # setStrategy
+    set_strategy(w3, y_controller, coin, new_strategy)
+
+    # update pool controller from old strategy
+    update_pool_controller(w3, balancer, strategy, new_strategy)
+
+    strategy = connect_strategy(w3, new_strategy.address)
+    return new_strategy
 
 
 def connect_strategy(w3, address):
@@ -835,10 +869,14 @@ def after_breach_setup(w3, contracts, coin, balancer, strategy, price=None):
     floor = args['Vault'][1] * PRICE_SCALE
     multiplier = args['Vault'][2]
     feeRate = args['Vault'][3]
+    vault_name = args['Vault'][4]
+    oracle = args['Vault'][5]
+    if not oracle:
+        oracle = account
     vault = deploy_contract(
         w3, contracts['Vault'],
-        'Mettalex Vault', tok_version, coin.address, ltk.address, stk.address,
-        account, balancer.address, cap, floor, multiplier, feeRate)
+        vault_name, tok_version, coin.address, ltk.address, stk.address,
+        oracle, balancer.address, cap, floor, multiplier, feeRate)
 
     # Contract setup:
     print('Whitelisting Mettalex vault to mint position tokens')
