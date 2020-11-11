@@ -819,7 +819,9 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # swap
-    tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut, 1).transact(
+    MAX_UINT_VALUE = 2**256 - 1
+
+    tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut, MAX_UINT_VALUE).transact(
         {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
@@ -935,12 +937,17 @@ if __name__ == '__main__':
         '--network', '-n', dest='network', default='local',
         help='For connecting to local, kovan or bsc-testnet network'
     )
+    parser.add_argument(
+        '--strategy', '-v', dest='strategy', default=1,
+        help='For getting strategy version we want to deploy DEX for'
+    )
 
     args = parser.parse_args()
     assert args.network in {'local', 'kovan', 'bsc-testnet'}
+    assert args.strategy in {'1', '2'}
 
     w3, admin = connect(args.network, 'admin')
-    contracts = get_contracts(w3)
+    contracts = get_contracts(w3, int(args.strategy))
 
     if args.action == 'deploy':
         deployed_contracts = deploy(w3, contracts)
