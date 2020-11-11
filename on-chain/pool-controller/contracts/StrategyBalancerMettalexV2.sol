@@ -222,7 +222,7 @@ contract StrategyBalancerMettalexV2 {
         return wt;
     }
 
-    function updateSpotAndNormalizeWeights() public notSettled {
+    function updateSpotAndNormalizeWeights() external notSettled {
         uint256 spotPrice = MettalexVault(mettalexVault).priceSpot();
         _rebalance(spotPrice);
     }
@@ -537,12 +537,13 @@ contract StrategyBalancerMettalexV2 {
         isBreachHandled = false;
     }
 
-    function swap(
+    function swapExactAmountIn(
         address tokenIn,
         uint256 tokenAmountIn,
         address tokenOut,
-        uint256 minAmountOut
-    ) external returns (uint256 tokenAmountOut) {
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) external returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
 
         //get tokens
@@ -552,19 +553,26 @@ contract StrategyBalancerMettalexV2 {
         bPool.setPublicSwap(true);
 
         if (tokenIn == want) {
-            tokenAmountOut = _swapFromCoin(
+            (tokenAmountOut, spotPriceAfter) = _swapFromCoin(
                 tokenAmountIn,
                 tokenOut,
-                minAmountOut
+                minAmountOut,
+                maxPrice
             );
         } else if (tokenOut == want) {
-            tokenAmountOut = _swapToCoin(tokenIn, tokenAmountIn, minAmountOut);
+            (tokenAmountOut, spotPriceAfter) = _swapToCoin(
+                tokenIn,
+                tokenAmountIn,
+                minAmountOut,
+                maxPrice
+            );
         } else {
-            tokenAmountOut = _swapPositions(
+            (tokenAmountOut, spotPriceAfter) = _swapPositions(
                 tokenIn,
                 tokenAmountIn,
                 tokenOut,
-                minAmountOut
+                minAmountOut,
+                maxPrice
             );
         }
 
@@ -581,41 +589,24 @@ contract StrategyBalancerMettalexV2 {
     function _swapFromCoin(
         uint256 tokenAmountIn,
         address tokenOut,
-        uint256 minAmountOut
-    ) internal returns (uint256 tokenAmountOut) {
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(
             tokenOut == longToken || tokenOut == shortToken,
             "ERR_TOKEN_OUT"
         );
 
         Balancer bPool = Balancer(balancer);
-        (uint256 ltkMinted, uint256 stkMinted) = _mintPositions(tokenAmountIn);
+        IERC20(want).safeApprove(balancer, tokenAmountIn);
 
-        if (tokenOut == longToken) {
-            IERC20(shortToken).safeApprove(balancer, stkMinted);
-
-            (tokenAmountOut, ) = bPool.swapExactAmountIn(
-                shortToken,
-                stkMinted,
-                longToken,
-                1,
-                uint256(-1)
-            );
-
-            tokenAmountOut = tokenAmountOut.add(ltkMinted);
-        } else {
-            IERC20(longToken).safeApprove(balancer, ltkMinted);
-
-            (tokenAmountOut, ) = bPool.swapExactAmountIn(
-                longToken,
-                ltkMinted,
-                shortToken,
-                1,
-                uint256(-1)
-            );
-
-            tokenAmountOut = tokenAmountOut.add(stkMinted);
-        }
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
+            want,
+            tokenAmountIn,
+            tokenOut,
+            1,
+            maxPrice
+        );
 
         //Rebalance Pool
         uint256 newSpotPrice = _calculateSpotPrice();
@@ -628,19 +619,20 @@ contract StrategyBalancerMettalexV2 {
     function _swapToCoin(
         address tokenIn,
         uint256 tokenAmountIn,
-        uint256 minAmountOut
-    ) internal returns (uint256 tokenAmountOut) {
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
 
         Balancer bPool = Balancer(balancer);
         IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
 
-        (tokenAmountOut, ) = bPool.swapExactAmountIn(
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
             tokenIn,
             tokenAmountIn,
             want,
             minAmountOut,
-            uint256(-1)
+            maxPrice
         );
 
         //Rebalance Pool
@@ -655,8 +647,9 @@ contract StrategyBalancerMettalexV2 {
         address tokenIn,
         uint256 tokenAmountIn,
         address tokenOut,
-        uint256 minAmountOut
-    ) internal returns (uint256 tokenAmountOut) {
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(tokenIn != tokenOut, "ERR_SAME_TOKEN_SWAP");
         require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
         require(
@@ -667,12 +660,12 @@ contract StrategyBalancerMettalexV2 {
         Balancer bPool = Balancer(balancer);
         IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
 
-        (tokenAmountOut, ) = bPool.swapExactAmountIn(
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
             tokenIn,
             tokenAmountIn,
             tokenOut,
             minAmountOut,
-            uint256(-1)
+            maxPrice
         );
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
@@ -686,47 +679,55 @@ contract StrategyBalancerMettalexV2 {
 
     // This function should return Total valuation of balancer pool.
     // i.e. ( LTK + STK + Coin ) from balancer pool.
-    function _getBalancerPoolValue() internal view returns (uint256) {
+    function _getBalancerPoolValue()
+        internal
+        view
+        returns (uint256 totalValuation)
+    {
         uint256 poolStkBalance = IERC20(shortToken).balanceOf(
             address(balancer)
         );
         uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
-        uint256 collateralPerUnit = MettalexVault(mettalexVault)
-            .collateralPerUnit();
-        uint256 totalValuation;
-        if (poolStkBalance >= poolLtkBalance) {
-            totalValuation = IERC20(want).balanceOf(address(balancer)).add(
-                poolLtkBalance.mul(collateralPerUnit)
-            );
-        } else {
-            totalValuation = IERC20(want).balanceOf(address(balancer)).add(
-                poolStkBalance.mul(collateralPerUnit)
-            );
+
+        totalValuation = IERC20(want).balanceOf(address(balancer));
+        Balancer bpool = Balancer(balancer);
+
+        //1e19 = (18 + 6 - 5) where (MAX_BONE + tok_in_decimal - tok_out_decimals)
+
+        //get short price values in want
+        if (poolStkBalance != 0) {
+            uint256 stkSpot = bpool.getSpotPriceSansFee(want, shortToken);
+            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e18);
+            totalValuation = totalValuation.add(totalValueInCoin);
+        }
+
+        //get long price values in want
+        if (poolLtkBalance != 0) {
+            uint256 ltkSpot = bpool.getSpotPriceSansFee(want, longToken);
+            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e18);
+            totalValuation = totalValuation.add(totalValueInCoin);
         }
         return totalValuation;
     }
 
     function getExpectedOutAmount(
-        address bPoolAddress,
         address fromToken,
         address toToken,
         uint256 fromTokenAmount
     ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
-        require(Balancer(bPoolAddress).isBound(fromToken));
-        require(Balancer(bPoolAddress).isBound(toToken));
-        uint256 swapFee = Balancer(bPoolAddress).getSwapFee();
+        Balancer bpool = Balancer(balancer);
 
-        uint256 tokenBalanceIn = Balancer(bPoolAddress).getBalance(fromToken);
-        uint256 tokenBalanceOut = Balancer(bPoolAddress).getBalance(toToken);
+        require(bpool.isBound(fromToken));
+        require(bpool.isBound(toToken));
+        uint256 swapFee = bpool.getSwapFee();
 
-        uint256 tokenWeightIn = Balancer(bPoolAddress).getDenormalizedWeight(
-            fromToken
-        );
-        uint256 tokenWeightOut = Balancer(bPoolAddress).getDenormalizedWeight(
-            toToken
-        );
+        uint256 tokenBalanceIn = bpool.getBalance(fromToken);
+        uint256 tokenBalanceOut = bpool.getBalance(toToken);
 
-        tokensReturned = Balancer(bPoolAddress).calcOutGivenIn(
+        uint256 tokenWeightIn = bpool.getDenormalizedWeight(fromToken);
+        uint256 tokenWeightOut = bpool.getDenormalizedWeight(toToken);
+
+        tokensReturned = bpool.calcOutGivenIn(
             tokenBalanceIn,
             tokenWeightIn,
             tokenBalanceOut,
@@ -735,35 +736,29 @@ contract StrategyBalancerMettalexV2 {
             swapFee
         );
 
-        uint256 spotPrice = Balancer(bPoolAddress).getSpotPrice(
-            fromToken,
-            toToken
-        );
+        uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
         uint256 effectivePrice = ((fromTokenAmount * 10**18) / tokensReturned);
         priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
     }
 
     function getExpectedInAmount(
-        address bPoolAddress,
         address fromToken,
         address toToken,
         uint256 toTokenAmount
     ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
-        require(Balancer(bPoolAddress).isBound(fromToken));
-        require(Balancer(bPoolAddress).isBound(toToken));
-        uint256 swapFee = Balancer(bPoolAddress).getSwapFee();
+        Balancer bpool = Balancer(balancer);
 
-        uint256 tokenBalanceIn = Balancer(bPoolAddress).getBalance(fromToken);
-        uint256 tokenBalanceOut = Balancer(bPoolAddress).getBalance(toToken);
+        require(bpool.isBound(fromToken));
+        require(bpool.isBound(toToken));
+        uint256 swapFee = bpool.getSwapFee();
 
-        uint256 tokenWeightIn = Balancer(bPoolAddress).getDenormalizedWeight(
-            fromToken
-        );
-        uint256 tokenWeightOut = Balancer(bPoolAddress).getDenormalizedWeight(
-            toToken
-        );
+        uint256 tokenBalanceIn = bpool.getBalance(fromToken);
+        uint256 tokenBalanceOut = bpool.getBalance(toToken);
 
-        tokensReturned = Balancer(bPoolAddress).calcInGivenOut(
+        uint256 tokenWeightIn = bpool.getDenormalizedWeight(fromToken);
+        uint256 tokenWeightOut = bpool.getDenormalizedWeight(toToken);
+
+        tokensReturned = bpool.calcInGivenOut(
             tokenBalanceIn,
             tokenWeightIn,
             tokenBalanceOut,
@@ -772,10 +767,7 @@ contract StrategyBalancerMettalexV2 {
             swapFee
         );
 
-        uint256 spotPrice = Balancer(bPoolAddress).getSpotPrice(
-            fromToken,
-            toToken
-        );
+        uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
         uint256 effectivePrice = ((tokensReturned * 10**18) / toTokenAmount);
         priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
     }
@@ -788,6 +780,11 @@ contract StrategyBalancerMettalexV2 {
     function setController(address _controller) external {
         require(msg.sender == governance, "!governance");
         controller = _controller;
+    }
+
+    function setSwapFee(uint256 _swapFee) external {
+        require(msg.sender == governance, "!governance");
+        Balancer(balancer).setSwapFee(_swapFee);
     }
 
     /********** BPool Methods for UI *********/
