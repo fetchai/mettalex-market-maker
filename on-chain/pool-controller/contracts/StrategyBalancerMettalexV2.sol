@@ -553,19 +553,26 @@ contract StrategyBalancerMettalexV2 {
         bPool.setPublicSwap(true);
 
         if (tokenIn == want) {
-            tokenAmountOut = _swapFromCoin(
+            (tokenAmountOut, spotPriceAfter) = _swapFromCoin(
                 tokenAmountIn,
                 tokenOut,
-                minAmountOut
+                minAmountOut,
+                maxPrice
             );
         } else if (tokenOut == want) {
-            tokenAmountOut = _swapToCoin(tokenIn, tokenAmountIn, minAmountOut);
+            (tokenAmountOut, spotPriceAfter) = _swapToCoin(
+                tokenIn,
+                tokenAmountIn,
+                minAmountOut,
+                maxPrice
+            );
         } else {
-            tokenAmountOut = _swapPositions(
+            (tokenAmountOut, spotPriceAfter) = _swapPositions(
                 tokenIn,
                 tokenAmountIn,
                 tokenOut,
-                minAmountOut
+                minAmountOut,
+                maxPrice
             );
         }
 
@@ -582,8 +589,9 @@ contract StrategyBalancerMettalexV2 {
     function _swapFromCoin(
         uint256 tokenAmountIn,
         address tokenOut,
-        uint256 minAmountOut
-    ) internal returns (uint256 tokenAmountOut) {
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(
             tokenOut == longToken || tokenOut == shortToken,
             "ERR_TOKEN_OUT"
@@ -592,12 +600,12 @@ contract StrategyBalancerMettalexV2 {
         Balancer bPool = Balancer(balancer);
         IERC20(want).safeApprove(balancer, tokenAmountIn);
 
-        (tokenAmountOut, ) = bPool.swapExactAmountIn(
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
             want,
             tokenAmountIn,
             tokenOut,
             1,
-            uint256(-1)
+            maxPrice
         );
 
         //Rebalance Pool
@@ -611,19 +619,20 @@ contract StrategyBalancerMettalexV2 {
     function _swapToCoin(
         address tokenIn,
         uint256 tokenAmountIn,
-        uint256 minAmountOut
-    ) internal returns (uint256 tokenAmountOut) {
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
 
         Balancer bPool = Balancer(balancer);
         IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
 
-        (tokenAmountOut, ) = bPool.swapExactAmountIn(
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
             tokenIn,
             tokenAmountIn,
             want,
             minAmountOut,
-            uint256(-1)
+            maxPrice
         );
 
         //Rebalance Pool
@@ -638,8 +647,9 @@ contract StrategyBalancerMettalexV2 {
         address tokenIn,
         uint256 tokenAmountIn,
         address tokenOut,
-        uint256 minAmountOut
-    ) internal returns (uint256 tokenAmountOut) {
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(tokenIn != tokenOut, "ERR_SAME_TOKEN_SWAP");
         require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
         require(
@@ -650,12 +660,12 @@ contract StrategyBalancerMettalexV2 {
         Balancer bPool = Balancer(balancer);
         IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
 
-        (tokenAmountOut, ) = bPool.swapExactAmountIn(
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
             tokenIn,
             tokenAmountIn,
             tokenOut,
             minAmountOut,
-            uint256(-1)
+            maxPrice
         );
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
@@ -701,7 +711,6 @@ contract StrategyBalancerMettalexV2 {
     }
 
     function getExpectedOutAmount(
-        address bPoolAddress,
         address fromToken,
         address toToken,
         uint256 fromTokenAmount
@@ -733,7 +742,6 @@ contract StrategyBalancerMettalexV2 {
     }
 
     function getExpectedInAmount(
-        address bPoolAddress,
         address fromToken,
         address toToken,
         uint256 toTokenAmount
