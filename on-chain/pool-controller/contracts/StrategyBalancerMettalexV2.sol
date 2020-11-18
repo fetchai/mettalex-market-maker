@@ -1,8 +1,8 @@
 pragma solidity ^0.5.16;
 
-import "./interfaces/Ibalancer.sol";
+import "./interfaces/IBalancer.sol";
 import "./interfaces/IERC20.sol";
-import "./interfaces/IMtlxVault.sol";
+import "./interfaces/IMettalexVault.sol";
 import "./interfaces/IYController.sol";
 import "./lib/Address.sol";
 import "./lib/SignedSafeMath.sol";
@@ -69,13 +69,13 @@ contract StrategyBalancerMettalexV2 {
     }
 
     modifier notSettled {
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         require(!mVault.isSettled(), "mVault is already settled");
         _;
     }
 
     modifier settled {
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         require(mVault.isSettled(), "mVault should be settled");
         _;
     }
@@ -121,13 +121,13 @@ contract StrategyBalancerMettalexV2 {
     function updatePoolController(address _controller) public {
         require(msg.sender == governance, "!governance");
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         bPool.setController(_controller);
     }
 
     function _unbind() internal {
         // Unbind tokens from Balancer pool
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         address[] memory tokens = bPool.getCurrentTokens();
         for (uint256 i = 0; i < tokens.length; i++) {
             bPool.unbind(tokens[i]);
@@ -135,7 +135,7 @@ contract StrategyBalancerMettalexV2 {
     }
 
     function _settle() internal settled {
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         mVault.settlePositions();
     }
 
@@ -151,7 +151,7 @@ contract StrategyBalancerMettalexV2 {
     }
 
     function _redeemPositions() internal {
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         uint256 ltkQty = IERC20(longToken).balanceOf(address(this));
         uint256 stkQty = IERC20(shortToken).balanceOf(address(this));
         if (stkQty < ltkQty) {
@@ -169,7 +169,7 @@ contract StrategyBalancerMettalexV2 {
         returns (uint256[3] memory wt)
     {
         //  Number of collateral tokens per pair of long and short tokens
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         PriceInfo memory price;
 
         price.spot = spotPrice; //; mVault.priceSpot();
@@ -223,7 +223,7 @@ contract StrategyBalancerMettalexV2 {
     }
 
     function updateSpotAndNormalizeWeights() external notSettled {
-        uint256 spotPrice = MettalexVault(mettalexVault).priceSpot();
+        uint256 spotPrice = IMettalexVault(mettalexVault).priceSpot();
         _rebalance(spotPrice);
     }
 
@@ -240,7 +240,7 @@ contract StrategyBalancerMettalexV2 {
         address[3] memory tokens = [shortToken, longToken, want];
 
         // Calculate delta in weights
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         int256[3] memory delta;
 
         // Max denorm value is compatible with int256
@@ -258,12 +258,12 @@ contract StrategyBalancerMettalexV2 {
     }
 
     function _calculateSpotPrice() public view returns (uint256 spotPrice) {
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         uint256 floor = mVault.priceFloor();
         uint256 cap = mVault.priceCap();
 
         //get spot price from balancer pool
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         uint256 priceShort = bPool.getSpotPrice(want, shortToken);
         uint256 priceLong = bPool.getSpotPrice(want, longToken);
 
@@ -332,7 +332,7 @@ contract StrategyBalancerMettalexV2 {
             tokens[1] = tempToken;
         }
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         bPool.rebind(tokens[0], balance[0], wt[0]);
         bPool.rebind(tokens[1], balance[1], wt[1]);
         bPool.rebind(tokens[2], balance[2], wt[2]);
@@ -365,7 +365,7 @@ contract StrategyBalancerMettalexV2 {
         uint256 strategyLtk = IERC20(longToken).balanceOf(address(this));
         uint256 strategyStk = IERC20(shortToken).balanceOf(address(this));
 
-        MettalexVault(mettalexVault).mintFromCollateralAmount(_amount);
+        IMettalexVault(mettalexVault).mintFromCollateralAmount(_amount);
 
         uint256 afterMintLtk = IERC20(longToken).balanceOf(address(this));
         uint256 afterMintStk = IERC20(shortToken).balanceOf(address(this));
@@ -410,10 +410,10 @@ contract StrategyBalancerMettalexV2 {
         bal[2] = strategyWant.add(balancerWant);
         uint256[3] memory wt = _calcDenormWeights(
             bal,
-            MettalexVault(mettalexVault).priceSpot()
+            IMettalexVault(mettalexVault).priceSpot()
         );
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
         bool isWantBound = bPool.isBound(want);
         bool isStkBound = bPool.isBound(shortToken);
@@ -448,17 +448,17 @@ contract StrategyBalancerMettalexV2 {
         require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
 
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         if (mVault.isSettled()) {
             handleBreach();
-            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
+            IERC20(want).transfer(IYController(controller).vaults(want), _amount);
         } else {
             _unbind();
 
             _redeemPositions();
 
             // Transfer out required funds to yVault.
-            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
+            IERC20(want).transfer(IYController(controller).vaults(want), _amount);
 
             _depositInternal();
         }
@@ -485,7 +485,7 @@ contract StrategyBalancerMettalexV2 {
         _withdrawAll();
 
         balance = IERC20(want).balanceOf(address(this));
-        address _vault = Controller(controller).vaults(want);
+        address _vault = IYController(controller).vaults(want);
 
         uint256 ltkDust = IERC20(longToken).balanceOf(address(this));
         uint256 stkDust = IERC20(shortToken).balanceOf(address(this));
@@ -549,7 +549,7 @@ contract StrategyBalancerMettalexV2 {
         //get tokens
         IERC20(tokenIn).transferFrom(msg.sender, address(this), tokenAmountIn);
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         bPool.setPublicSwap(true);
 
         if (tokenIn == want) {
@@ -597,7 +597,7 @@ contract StrategyBalancerMettalexV2 {
             "ERR_TOKEN_OUT"
         );
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         IERC20(want).safeApprove(balancer, tokenAmountIn);
 
         (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
@@ -624,7 +624,7 @@ contract StrategyBalancerMettalexV2 {
     ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
 
         (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
@@ -657,7 +657,7 @@ contract StrategyBalancerMettalexV2 {
             "ERR_TOKEN_OUT"
         );
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
 
         (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
@@ -690,7 +690,7 @@ contract StrategyBalancerMettalexV2 {
         uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
 
         totalValuation = IERC20(want).balanceOf(address(balancer));
-        Balancer bpool = Balancer(balancer);
+        IBalancer bpool = IBalancer(balancer);
 
         //1e19 = (18 + 6 - 5) where (MAX_BONE + tok_in_decimal - tok_out_decimals)
 
@@ -715,7 +715,7 @@ contract StrategyBalancerMettalexV2 {
         address toToken,
         uint256 fromTokenAmount
     ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
-        Balancer bpool = Balancer(balancer);
+        IBalancer bpool = IBalancer(balancer);
 
         require(bpool.isBound(fromToken));
         require(bpool.isBound(toToken));
@@ -746,7 +746,7 @@ contract StrategyBalancerMettalexV2 {
         address toToken,
         uint256 toTokenAmount
     ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
-        Balancer bpool = Balancer(balancer);
+        IBalancer bpool = IBalancer(balancer);
 
         require(bpool.isBound(fromToken));
         require(bpool.isBound(toToken));
@@ -784,19 +784,19 @@ contract StrategyBalancerMettalexV2 {
 
     function setSwapFee(uint256 _swapFee) external {
         require(msg.sender == governance, "!governance");
-        Balancer(balancer).setSwapFee(_swapFee);
+        IBalancer(balancer).setSwapFee(_swapFee);
     }
 
     /********** BPool Methods for UI *********/
     function getBalance(address token) external view returns (uint256) {
-        return Balancer(balancer).getBalance(token);
+        return IBalancer(balancer).getBalance(token);
     }
 
     function getSwapFee() external view returns (uint256) {
-        return Balancer(balancer).getSwapFee();
+        return IBalancer(balancer).getSwapFee();
     }
 
     function isBound(address token) external view returns (bool) {
-        return Balancer(balancer).isBound(token);
+        return IBalancer(balancer).isBound(token);
     }
 }

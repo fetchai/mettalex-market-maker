@@ -1,6 +1,6 @@
 pragma solidity ^0.5.16;
 
-interface Balancer {
+interface IBalancer {
     function isPublicSwap() external view returns (bool);
 
     function isFinalized() external view returns (bool);

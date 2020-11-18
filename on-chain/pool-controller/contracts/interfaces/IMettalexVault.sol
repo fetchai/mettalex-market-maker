@@ -1,6 +1,6 @@
 pragma solidity ^0.5.16;
 
-interface MettalexVault {
+interface IMettalexVault {
     function collateralPerUnit()
         external
         view
