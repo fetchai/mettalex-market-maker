@@ -1,3 +1,13 @@
+init:
+	cd mettalex-balancer/ && npm install &&	npx oz compile
+	cd mettalex-coin/ && npm install &&	npx oz compile
+	cd mettalex-faucet/ && npm install &&	npx oz compile
+	cd mettalex-vault/ &&	npm install &&	npx oz compile
+	cd mettalex-yearn/ &&	npm install &&	npx oz compile
+	cd pool-controller/ && npm install &&	npx oz compile
+	cd scripts/ && pip3 install -r requirements.txt
+
+
 deploy:
 	make --directory=mettalex-balancer deploy_pool_factory
 	make --directory=mettalex-balancer deploy_balancer_amm
