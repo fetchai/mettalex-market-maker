@@ -11,7 +11,7 @@ def connect():
     from web3.auto import w3
     from web3.middleware import construct_sign_and_send_raw_middleware
 
-    admin = w3.eth.account.from_key('0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d')
+    admin = w3.eth.account.from_key('')
     w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
     w3.eth.defaultAccount = admin.address
     return w3, admin
