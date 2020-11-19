@@ -1,58 +1,35 @@
 pragma solidity ^0.5.16;
 
-import "./interfaces/Ibalancer.sol";
+import "./interfaces/IBalancer.sol";
 import "./interfaces/IERC20.sol";
-import "./interfaces/IMtlxVault.sol";
+import "./interfaces/IMettalexVault.sol";
 import "./interfaces/IYController.sol";
+
 import "./lib/Address.sol";
 import "./lib/SignedSafeMath.sol";
 import "./lib/SafeMath.sol";
 import "./lib/SafeERC20.sol";
 
-/*
-
- A strategy must implement the following calls;
-
- - deposit()
- - withdraw(address) must exclude any tokens used in the yield - Controller role - withdraw should return to Controller
- - withdraw(uint) - Controller | Vault role - withdraw should always return to vault
- - withdrawAll() - Controller | Vault role - withdraw should always return to vault
- - balanceOf()
-
- Where possible, strategies must remain as immutable as possible, instead of updating variables, we update the contract by linking it in the controller
-
-*/
-
-/*
-
- Strategy ~ 50% USDT to LTK + STK
- USDT + LTK + STK into balancer
- (No yield farming, just Balancer pool fees)
-
-*/
-
+/**
+ * @title StrategyBalancerMettalexV2
+ * @notice A strategy must implement the following calls:
+ * 1. deposit()
+ * 2. withdraw(address) - must exclude any tokens used in the yield - Controller role
+ *    withdraw should return to Controller
+ * 3. withdraw(uint) - Controller role - withdraw should always return to vault
+ * 4. withdrawAll() - Controller role - withdraw should always return to vault
+ * 5. balanceOf()
+ * Where possible, strategies must remain as immutable as possible, instead of updating
+ * variables, we update the contract by linking it in the controller
+ * @dev Strategy ~ 50% USDT to LTK + STK
+ * USDT + LTK + STK into balancer
+ * (No yield farming, just Balancer pool fees)
+ */
 contract StrategyBalancerMettalexV2 {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
     using SignedSafeMath for int256;
-
-    // ganache --deterministic USDT
-    address public want; // = address(0xCfEB869F69431e42cdB54A4F4f105C19C080A601);
-
-    address public balancer; // = address(0x72Cd8f4504941Bf8c5a21d1Fd83A96499FD71d2C);
-
-    address public mettalexVault; // = address(0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb);
-    address public longToken; // = address(0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B);
-    address public shortToken; // = address(0xC89Ce4735882C9F0f0FE26686c53074E09B0D550);
-
-    address public governance;
-    address public controller;
-    bool public breaker; // = false;
-
-    // Supply tracks the number of `want` that we have lent out of other distro's
-    uint256 public supply; // = 0;
-    bool public isBreachHandled;
 
     // Struct containing variables needed for denormalized weight calculation
     // to avoid stack error
@@ -68,23 +45,19 @@ contract StrategyBalancerMettalexV2 {
         uint256 d;
     }
 
-    modifier notSettled {
-        MettalexVault mVault = MettalexVault(mettalexVault);
-        require(!mVault.isSettled(), "mVault is already settled");
-        _;
-    }
+    // Supply tracks the number of `want` that we have lent out of other distro's
+    uint256 public supply;
 
-    modifier settled {
-        MettalexVault mVault = MettalexVault(mettalexVault);
-        require(mVault.isSettled(), "mVault should be settled");
-        _;
-    }
+    address public want;
+    address public balancer;
+    address public mettalexVault;
+    address public longToken;
+    address public shortToken;
+    address public governance;
+    address public controller;
 
-    modifier callOnce {
-        if (!isBreachHandled) {
-            _;
-        }
-    }
+    bool public isBreachHandled;
+    bool public breaker;
 
     event LOG_SWAP(
         address indexed caller,
@@ -94,6 +67,15 @@ contract StrategyBalancerMettalexV2 {
         uint256 tokenAmountOut
     );
 
+    /**
+     * @dev The Strategy constructor sets initial values
+     * @param _controller address The address of Strategy Controller (IYController)
+     * @param _want address The address of Want token
+     * @param _balancer address The address of Balancer Pool
+     * @param _mettalexVault address The Mettalex vault address connected with the current commodity
+     * @param _longToken address The long position token address
+     * @param _shortToken address The short position token address
+     */
     constructor(
         address _controller,
         address _want,
@@ -113,34 +95,205 @@ contract StrategyBalancerMettalexV2 {
         supply = 0;
     }
 
-    function setBreaker(bool _breaker) public {
-        require(msg.sender == governance, "!governance");
-        breaker = _breaker;
-    }
-
-    function updatePoolController(address _controller) public {
-        require(msg.sender == governance, "!governance");
-
-        Balancer bPool = Balancer(balancer);
-        bPool.setController(_controller);
-    }
-
-    function _unbind() internal {
-        // Unbind tokens from Balancer pool
-        Balancer bPool = Balancer(balancer);
-        address[] memory tokens = bPool.getCurrentTokens();
-        for (uint256 i = 0; i < tokens.length; i++) {
-            bPool.unbind(tokens[i]);
+    /**
+     * @dev Throws if breach already handled after commodity settled
+     */
+    modifier callOnce {
+        if (!isBreachHandled) {
+            _;
         }
     }
 
-    function _settle() internal settled {
-        MettalexVault mVault = MettalexVault(mettalexVault);
-        mVault.settlePositions();
+    /**
+     * @dev Throws if vault contract is not settled
+     */
+    modifier notSettled {
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
+        require(!mVault.isSettled(), "mVault is already settled");
+        _;
     }
 
-    // Settle all Long and Short tokens held by the contract in case of Commodity breach
-    // should be called only once
+    /**
+     * @dev Throws if vault contract is settled
+     */
+    modifier settled {
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
+        require(mVault.isSettled(), "mVault should be settled");
+        _;
+    }
+
+    /**
+     * @dev Used to deposit and bind/rebalance the balancer pool
+     * @dev Can be called by controller only
+     */
+    function deposit() external notSettled {
+        require(msg.sender == controller, "!controller");
+        require(breaker == false, "!breaker");
+
+        uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
+            address(this)
+        );
+
+        _depositInternal();
+
+        uint256 wantAfterMintandDeposit = IERC20(want).balanceOf(address(this));
+
+        supply = supply.add(
+            wantBeforeMintandDeposit.sub(wantAfterMintandDeposit)
+        );
+    }
+
+    /**
+     * @dev Used to withdraw partial funds, normally used with a vault withdrawal
+     * @dev Can be called by controller only
+     * @param _amount uint256 The amount of want to withdraw
+     */
+    function withdraw(uint256 _amount) external {
+        // check if breached: return
+        require(msg.sender == controller, "!controller");
+        require(breaker == false, "!breaker");
+
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
+        if (mVault.isSettled()) {
+            handleBreach();
+            IERC20(want).transfer(
+                IYController(controller).vaults(want),
+                _amount
+            );
+        } else {
+            _unbind();
+
+            _redeemPositions();
+
+            // Transfer out required funds to yVault.
+            IERC20(want).transfer(
+                IYController(controller).vaults(want),
+                _amount
+            );
+
+            _depositInternal();
+        }
+
+        supply = supply.sub(_amount);
+    }
+
+    /**
+     * @dev Used for creating additional rewards from dust
+     * @dev Can be called by controller only
+     * @param _token address The address of token to collect
+     * @return The balance of this contract for given token address
+     */
+    function withdraw(address _token) external returns (uint256 balance) {
+        require(msg.sender == controller, "!controller");
+        require(breaker == false, "!breaker");
+        require(address(_token) != want, "Want");
+        require(address(_token) != longToken, "LTOK");
+        require(address(_token) != shortToken, "STOK");
+
+        balance = IERC20(_token).balanceOf(address(this));
+        IERC20(_token).safeTransfer(controller, balance);
+    }
+
+    /**
+     * @dev Used to withdraw all funds, normally used when migrating strategies
+     * @dev Can be called by controller only
+     * @return The balance of want transferred to controller
+     */
+    function withdrawAll() external returns (uint256 balance) {
+        require(msg.sender == controller, "!controller");
+
+        _withdrawAll();
+
+        balance = IERC20(want).balanceOf(address(this));
+        address _vault = IYController(controller).vaults(want);
+
+        uint256 ltkDust = IERC20(longToken).balanceOf(address(this));
+        uint256 stkDust = IERC20(shortToken).balanceOf(address(this));
+
+        // additional protection so we don't burn the funds
+        require(_vault != address(0), "!vault");
+        IERC20(want).safeTransfer(_vault, balance);
+
+        IERC20(longToken).safeTransfer(controller, ltkDust);
+        IERC20(shortToken).safeTransfer(controller, stkDust);
+    }
+
+    /**
+     * @dev Used to swap tokens from Balancer pool
+     * @dev method signature same as swapExactAmountIn() in BPool
+     * @param tokenIn address The address of token to swap (_from)
+     * @param tokenAmountIn uint256 The amount of token to swap
+     * @param tokenOut address The address of token to receive after swap (_to)
+     * @param minAmountOut uint256 The amount expected after swapping _from token
+     * @param maxPrice uint256 max price after swap
+     * @return The amount of _to token returned to user
+     * @return The spot price after token swap
+     */
+    function swapExactAmountIn(
+        address tokenIn,
+        uint256 tokenAmountIn,
+        address tokenOut,
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) external returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
+        require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
+
+        //get tokens
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), tokenAmountIn);
+
+        IBalancer bPool = IBalancer(balancer);
+        bPool.setPublicSwap(true);
+
+        if (tokenIn == want) {
+            (tokenAmountOut, spotPriceAfter) = _swapFromCoin(
+                tokenAmountIn,
+                tokenOut,
+                minAmountOut,
+                maxPrice
+            );
+        } else if (tokenOut == want) {
+            (tokenAmountOut, spotPriceAfter) = _swapToCoin(
+                tokenIn,
+                tokenAmountIn,
+                minAmountOut,
+                maxPrice
+            );
+        } else {
+            (tokenAmountOut, spotPriceAfter) = _swapPositions(
+                tokenIn,
+                tokenAmountIn,
+                tokenOut,
+                minAmountOut,
+                maxPrice
+            );
+        }
+
+        emit LOG_SWAP(
+            msg.sender,
+            tokenIn,
+            tokenOut,
+            tokenAmountIn,
+            tokenAmountOut
+        );
+        bPool.setPublicSwap(false);
+    }
+
+    /**
+     * @dev Used to rebalance the Balancer pool according to new spot
+     * price updated in vault
+     */
+    function updateSpotAndNormalizeWeights() external notSettled {
+        uint256 spotPrice = IMettalexVault(mettalexVault).priceSpot();
+        _rebalance(spotPrice);
+    }
+
+    /**
+     * @dev Used to settle all Long and Short tokens held by the contract
+     * in case of Commodity breach
+     * @dev Should be called only once (before updating commodity addresses)
+     * @dev isBreachHandled updated in updateCommodityAfterBreach() with same BPool and Strategy
+     * but new position tokens and vault
+     */
     function handleBreach() public settled callOnce {
         require(breaker == false, "!breaker");
 
@@ -150,8 +303,221 @@ contract StrategyBalancerMettalexV2 {
         _settle();
     }
 
+    /**
+     * @dev Used to update Contract addresses after breach
+     * @dev Can be called by governance only
+     * @param _vault address The new address of vault
+     * @param _ltk address The new address of long token
+     * @param _stk address The new address of short token
+     */
+    function updateCommodityAfterBreach(
+        address _vault,
+        address _ltk,
+        address _stk
+    ) external settled {
+        require(msg.sender == governance, "!governance");
+        bool hasLong = IERC20(longToken).balanceOf(address(this)) > 0;
+        bool hasShort = IERC20(shortToken).balanceOf(address(this)) > 0;
+        if (hasLong || hasShort) {
+            handleBreach();
+        }
+
+        mettalexVault = _vault;
+        longToken = _ltk;
+        shortToken = _stk;
+
+        _depositInternal();
+
+        isBreachHandled = false;
+    }
+
+    /**
+     * @dev Used to get balance of strategy in terms of want
+     * @dev Gets pool value (LTK + STK + USDT (want)) in terms of USDT and
+     * adds the amount to this contract balance.
+     * @return The balance of strategy and bpool in terms of want
+     */
+    function balanceOf() external view returns (uint256) {
+        uint256 bpoolValuation = _getBalancerPoolValue();
+        return IERC20(want).balanceOf(address(this)).add(bpoolValuation);
+    }
+
+    /**
+     * @dev Used to update governance address
+     * @dev Can be called by governance only
+     * @param _governance address The address of new governance
+     */
+    function setGovernance(address _governance) external {
+        require(msg.sender == governance, "!governance");
+        governance = _governance;
+    }
+
+    /**
+     * @dev Used to update controller for strategy
+     * @dev Can be called by governance only
+     * @param _controller address The address of new controller
+     */
+    function setController(address _controller) external {
+        require(msg.sender == governance, "!governance");
+        controller = _controller;
+    }
+
+    /**
+     * @dev Used to update swap fee in balancer pool
+     * @dev Can be called by governance only
+     * @param _swapFee uint256 The new swap fee
+     */
+    function setSwapFee(uint256 _swapFee) external {
+        require(msg.sender == governance, "!governance");
+        IBalancer(balancer).setSwapFee(_swapFee);
+    }
+
+    /**
+     * @dev Used to pause the contract functions on which break is applied
+     * @dev Can be called by governance only
+     * @param _breaker bool The boolean value indicating contract is paused or not
+     */
+    function setBreaker(bool _breaker) public {
+        require(msg.sender == governance, "!governance");
+        breaker = _breaker;
+    }
+
+    /**
+     * @dev Used to update balancer pool controller address
+     * @dev Can be called by governance only
+     * @param _controller address The address of new controller
+     */
+    function updatePoolController(address _controller) public {
+        require(msg.sender == governance, "!governance");
+
+        IBalancer bPool = IBalancer(balancer);
+        bPool.setController(_controller);
+    }
+
+    /********** BPool Methods for UI *********/
+    /**
+     * @dev Used to get balance of token in balancer pool connected with this strategy
+     * @param token address The address of token
+     * @return The balance of given token in balancer pool
+     */
+    function getBalance(address token) external view returns (uint256) {
+        return IBalancer(balancer).getBalance(token);
+    }
+
+    /**
+     * @dev Used to get swap fee of the balancer pool connected with this strategy
+     * @return The swap fee of balancer pool
+     */
+    function getSwapFee() external view returns (uint256) {
+        return IBalancer(balancer).getSwapFee();
+    }
+
+    /**
+     * @dev Used to check if token is bounded to the balancer pool connected with this strategy
+     * @param token address The address of token
+     * @return If given token is bounded to balancer pool or not
+     */
+    function isBound(address token) external view returns (bool) {
+        return IBalancer(balancer).isBound(token);
+    }
+
+    /**
+     * @dev Used to get expected _to amount after swapping given amount
+     * of _from token
+     * @param fromToken address The address of _from token
+     * @param toToken address The address of _to token
+     * @param fromTokenAmount uint256 The amount of _from token to swap
+     * @return The _to amount expected after swapping given amount of _from token
+     * @return The price impact in swapping
+     */
+    function getExpectedOutAmount(
+        address fromToken,
+        address toToken,
+        uint256 fromTokenAmount
+    ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
+        IBalancer bpool = IBalancer(balancer);
+
+        require(bpool.isBound(fromToken));
+        require(bpool.isBound(toToken));
+        uint256 swapFee = bpool.getSwapFee();
+
+        uint256 tokenBalanceIn = bpool.getBalance(fromToken);
+        uint256 tokenBalanceOut = bpool.getBalance(toToken);
+
+        uint256 tokenWeightIn = bpool.getDenormalizedWeight(fromToken);
+        uint256 tokenWeightOut = bpool.getDenormalizedWeight(toToken);
+
+        tokensReturned = bpool.calcOutGivenIn(
+            tokenBalanceIn,
+            tokenWeightIn,
+            tokenBalanceOut,
+            tokenWeightOut,
+            fromTokenAmount,
+            swapFee
+        );
+
+        uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
+        uint256 effectivePrice = ((fromTokenAmount * 10**18) / tokensReturned);
+        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
+    }
+
+    /**
+     * @dev Used to get expected amount of _from token needed for getting
+     * exact amount of _to token
+     * @param fromToken address The address of _from token
+     * @param toToken address The address of _to token
+     * @param toTokenAmount uint256 The amount of _from token to swap
+     * @return The _from amount to be swapped to get toTokenAmount of _to token
+     * @return The price impact in swapping
+     */
+    function getExpectedInAmount(
+        address fromToken,
+        address toToken,
+        uint256 toTokenAmount
+    ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
+        IBalancer bpool = IBalancer(balancer);
+
+        require(bpool.isBound(fromToken));
+        require(bpool.isBound(toToken));
+        uint256 swapFee = bpool.getSwapFee();
+
+        uint256 tokenBalanceIn = bpool.getBalance(fromToken);
+        uint256 tokenBalanceOut = bpool.getBalance(toToken);
+
+        uint256 tokenWeightIn = bpool.getDenormalizedWeight(fromToken);
+        uint256 tokenWeightOut = bpool.getDenormalizedWeight(toToken);
+
+        tokensReturned = bpool.calcInGivenOut(
+            tokenBalanceIn,
+            tokenWeightIn,
+            tokenBalanceOut,
+            tokenWeightOut,
+            toTokenAmount,
+            swapFee
+        );
+
+        uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
+        uint256 effectivePrice = ((tokensReturned * 10**18) / toTokenAmount);
+        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
+    }
+
+    function _calculateSpotPrice() internal view returns (uint256 spotPrice) {
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
+        uint256 floor = mVault.priceFloor();
+        uint256 cap = mVault.priceCap();
+
+        //get spot price from balancer pool
+        IBalancer bPool = IBalancer(balancer);
+        uint256 priceShort = bPool.getSpotPrice(want, shortToken);
+        uint256 priceLong = bPool.getSpotPrice(want, longToken);
+
+        spotPrice = floor.add(
+            (cap.sub(floor)).mul(priceLong).div(priceShort.add(priceLong))
+        );
+    }
+
     function _redeemPositions() internal {
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         uint256 ltkQty = IERC20(longToken).balanceOf(address(this));
         uint256 stkQty = IERC20(shortToken).balanceOf(address(this));
         if (stkQty < ltkQty) {
@@ -163,13 +529,27 @@ contract StrategyBalancerMettalexV2 {
         }
     }
 
+    function _unbind() internal {
+        // Unbind tokens from Balancer pool
+        IBalancer bPool = IBalancer(balancer);
+        address[] memory tokens = bPool.getCurrentTokens();
+        for (uint256 i = 0; i < tokens.length; i++) {
+            bPool.unbind(tokens[i]);
+        }
+    }
+
+    function _settle() internal settled {
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
+        mVault.settlePositions();
+    }
+
     function _calcDenormWeights(uint256[3] memory bal, uint256 spotPrice)
         internal
         view
         returns (uint256[3] memory wt)
     {
         //  Number of collateral tokens per pair of long and short tokens
-        MettalexVault mVault = MettalexVault(mettalexVault);
+        IMettalexVault mVault = IMettalexVault(mettalexVault);
         PriceInfo memory price;
 
         price.spot = spotPrice; //; mVault.priceSpot();
@@ -216,15 +596,7 @@ contract StrategyBalancerMettalexV2 {
             wt[1] = wt[1].mul(50);
             wt[2] = wt[2].mul(50);
         }
-
-        //        wt[1] = bal[1].mul(100 ether).mul(price.dl).mul(price.spot.sub(price.floor)).div(price.range).div(d).div(2);
-        //        wt[2] = bal[2].mul(100 ether).mul(C).mul(price.cap.sub(price.spot)).div(price.range).div(d).div(2);
         return wt;
-    }
-
-    function updateSpotAndNormalizeWeights() external notSettled {
-        uint256 spotPrice = MettalexVault(mettalexVault).priceSpot();
-        _rebalance(spotPrice);
     }
 
     function _rebalance(uint256 spotPrice) internal {
@@ -240,7 +612,7 @@ contract StrategyBalancerMettalexV2 {
         address[3] memory tokens = [shortToken, longToken, want];
 
         // Calculate delta in weights
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         int256[3] memory delta;
 
         // Max denorm value is compatible with int256
@@ -255,21 +627,6 @@ contract StrategyBalancerMettalexV2 {
         );
 
         _sortAndRebind(delta, newWt, bal, tokens);
-    }
-
-    function _calculateSpotPrice() public view returns (uint256 spotPrice) {
-        MettalexVault mVault = MettalexVault(mettalexVault);
-        uint256 floor = mVault.priceFloor();
-        uint256 cap = mVault.priceCap();
-
-        //get spot price from balancer pool
-        Balancer bPool = Balancer(balancer);
-        uint256 priceShort = bPool.getSpotPrice(want, shortToken);
-        uint256 priceLong = bPool.getSpotPrice(want, longToken);
-
-        spotPrice = floor.add(
-            (cap.sub(floor)).mul(priceLong).div(priceShort.add(priceLong))
-        );
     }
 
     function _sortAndRebind(
@@ -332,27 +689,10 @@ contract StrategyBalancerMettalexV2 {
             tokens[1] = tempToken;
         }
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         bPool.rebind(tokens[0], balance[0], wt[0]);
         bPool.rebind(tokens[1], balance[1], wt[1]);
         bPool.rebind(tokens[2], balance[2], wt[2]);
-    }
-
-    function deposit() external notSettled {
-        require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
-
-        uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
-            address(this)
-        );
-
-        _depositInternal();
-
-        uint256 wantAfterMintandDeposit = IERC20(want).balanceOf(address(this));
-
-        supply = supply.add(
-            wantBeforeMintandDeposit.sub(wantAfterMintandDeposit)
-        );
     }
 
     function _mintPositions(uint256 _amount)
@@ -365,13 +705,147 @@ contract StrategyBalancerMettalexV2 {
         uint256 strategyLtk = IERC20(longToken).balanceOf(address(this));
         uint256 strategyStk = IERC20(shortToken).balanceOf(address(this));
 
-        MettalexVault(mettalexVault).mintFromCollateralAmount(_amount);
+        IMettalexVault(mettalexVault).mintFromCollateralAmount(_amount);
 
         uint256 afterMintLtk = IERC20(longToken).balanceOf(address(this));
         uint256 afterMintStk = IERC20(shortToken).balanceOf(address(this));
 
         ltk = afterMintLtk.sub(strategyLtk);
         stk = afterMintStk.sub(strategyStk);
+    }
+
+    function _withdrawAll() internal {
+        uint256 _before = IERC20(want).balanceOf(address(this));
+
+        _unbind();
+        _redeemPositions();
+
+        uint256 _after = IERC20(want).balanceOf(address(this));
+
+        uint256 _diff = _after.sub(_before);
+        if (_diff > supply) {
+            // Pool made too much profit, so we reset to 0 to avoid revert
+            supply = 0;
+        } else {
+            supply = supply.sub(_after.sub(_before));
+        }
+    }
+
+    function _swapFromCoin(
+        uint256 tokenAmountIn,
+        address tokenOut,
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
+        require(
+            tokenOut == longToken || tokenOut == shortToken,
+            "ERR_TOKEN_OUT"
+        );
+
+        IBalancer bPool = IBalancer(balancer);
+        IERC20(want).safeApprove(balancer, tokenAmountIn);
+
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
+            want,
+            tokenAmountIn,
+            tokenOut,
+            1,
+            maxPrice
+        );
+
+        //Rebalance Pool
+        uint256 newSpotPrice = _calculateSpotPrice();
+        _rebalance(newSpotPrice);
+
+        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
+        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
+    }
+
+    function _swapToCoin(
+        address tokenIn,
+        uint256 tokenAmountIn,
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
+        require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
+
+        IBalancer bPool = IBalancer(balancer);
+        IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
+
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
+            tokenIn,
+            tokenAmountIn,
+            want,
+            minAmountOut,
+            maxPrice
+        );
+
+        //Rebalance Pool
+        uint256 newSpotPrice = _calculateSpotPrice();
+        _rebalance(newSpotPrice);
+
+        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
+        IERC20(want).transfer(msg.sender, tokenAmountOut);
+    }
+
+    function _swapPositions(
+        address tokenIn,
+        uint256 tokenAmountIn,
+        address tokenOut,
+        uint256 minAmountOut,
+        uint256 maxPrice
+    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
+        require(tokenIn != tokenOut, "ERR_SAME_TOKEN_SWAP");
+        require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
+        require(
+            tokenOut == longToken || tokenOut == shortToken,
+            "ERR_TOKEN_OUT"
+        );
+
+        IBalancer bPool = IBalancer(balancer);
+        IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
+
+        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
+            tokenIn,
+            tokenAmountIn,
+            tokenOut,
+            minAmountOut,
+            maxPrice
+        );
+
+        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
+        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
+    }
+
+    // This function should return Total valuation of balancer pool.
+    // i.e. ( LTK + STK + Coin ) from balancer pool.
+    function _getBalancerPoolValue()
+        internal
+        view
+        returns (uint256 totalValuation)
+    {
+        uint256 poolStkBalance = IERC20(shortToken).balanceOf(
+            address(balancer)
+        );
+        uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
+
+        totalValuation = IERC20(want).balanceOf(address(balancer));
+        IBalancer bpool = IBalancer(balancer);
+
+        //get short price values in want
+        if (poolStkBalance != 0) {
+            uint256 stkSpot = bpool.getSpotPriceSansFee(want, shortToken);
+            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e18);
+            totalValuation = totalValuation.add(totalValueInCoin);
+        }
+
+        //get long price values in want
+        if (poolLtkBalance != 0) {
+            uint256 ltkSpot = bpool.getSpotPriceSansFee(want, longToken);
+            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e18);
+            totalValuation = totalValuation.add(totalValueInCoin);
+        }
+        return totalValuation;
     }
 
     function _depositInternal() private {
@@ -410,10 +884,10 @@ contract StrategyBalancerMettalexV2 {
         bal[2] = strategyWant.add(balancerWant);
         uint256[3] memory wt = _calcDenormWeights(
             bal,
-            MettalexVault(mettalexVault).priceSpot()
+            IMettalexVault(mettalexVault).priceSpot()
         );
 
-        Balancer bPool = Balancer(balancer);
+        IBalancer bPool = IBalancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
         bool isWantBound = bPool.isBound(want);
         bool isStkBound = bPool.isBound(shortToken);
@@ -440,363 +914,5 @@ contract StrategyBalancerMettalexV2 {
 
             _sortAndRebind(delta, wt, bal, tokens);
         }
-    }
-
-    // Withdraw partial funds, normally used with a vault withdrawal
-    function withdraw(uint256 _amount) external {
-        // check if breached: return
-        require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
-
-        MettalexVault mVault = MettalexVault(mettalexVault);
-        if (mVault.isSettled()) {
-            handleBreach();
-            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
-        } else {
-            _unbind();
-
-            _redeemPositions();
-
-            // Transfer out required funds to yVault.
-            IERC20(want).transfer(Controller(controller).vaults(want), _amount);
-
-            _depositInternal();
-        }
-
-        supply = supply.sub(_amount);
-    }
-
-    // Controller only function for creating additional rewards from dust
-    function withdraw(address _token) external returns (uint256 balance) {
-        require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
-        require(address(_token) != want, "Want");
-        require(address(_token) != longToken, "LTOK");
-        require(address(_token) != shortToken, "STOK");
-
-        balance = IERC20(_token).balanceOf(address(this));
-        IERC20(_token).safeTransfer(controller, balance);
-    }
-
-    // Withdraw all funds, normally used when migrating strategies
-    function withdrawAll() external returns (uint256 balance) {
-        require(msg.sender == controller, "!controller");
-
-        _withdrawAll();
-
-        balance = IERC20(want).balanceOf(address(this));
-        address _vault = Controller(controller).vaults(want);
-
-        uint256 ltkDust = IERC20(longToken).balanceOf(address(this));
-        uint256 stkDust = IERC20(shortToken).balanceOf(address(this));
-
-        // additional protection so we don't burn the funds
-        require(_vault != address(0), "!vault");
-        IERC20(want).safeTransfer(_vault, balance);
-
-        IERC20(longToken).safeTransfer(controller, ltkDust);
-        IERC20(shortToken).safeTransfer(controller, stkDust);
-    }
-
-    function _withdrawAll() internal {
-        uint256 _before = IERC20(want).balanceOf(address(this));
-
-        _unbind();
-        _redeemPositions();
-
-        uint256 _after = IERC20(want).balanceOf(address(this));
-
-        uint256 _diff = _after.sub(_before);
-        if (_diff > supply) {
-            // Pool made too much profit, so we reset to 0 to avoid revert
-            supply = 0;
-        } else {
-            supply = supply.sub(_after.sub(_before));
-        }
-    }
-
-    // Update Contract addresses after breach
-    function updateCommodityAfterBreach(
-        address _vault,
-        address _ltk,
-        address _stk
-    ) external settled {
-        require(msg.sender == governance, "!governance");
-        bool hasLong = IERC20(longToken).balanceOf(address(this)) > 0;
-        bool hasShort = IERC20(shortToken).balanceOf(address(this)) > 0;
-        if (hasLong || hasShort) {
-            handleBreach();
-        }
-
-        mettalexVault = _vault;
-        longToken = _ltk;
-        shortToken = _stk;
-
-        _depositInternal();
-
-        isBreachHandled = false;
-    }
-
-    function swapExactAmountIn(
-        address tokenIn,
-        uint256 tokenAmountIn,
-        address tokenOut,
-        uint256 minAmountOut,
-        uint256 maxPrice
-    ) external returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
-        require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
-
-        //get tokens
-        IERC20(tokenIn).transferFrom(msg.sender, address(this), tokenAmountIn);
-
-        Balancer bPool = Balancer(balancer);
-        bPool.setPublicSwap(true);
-
-        if (tokenIn == want) {
-            (tokenAmountOut, spotPriceAfter) = _swapFromCoin(
-                tokenAmountIn,
-                tokenOut,
-                minAmountOut,
-                maxPrice
-            );
-        } else if (tokenOut == want) {
-            (tokenAmountOut, spotPriceAfter) = _swapToCoin(
-                tokenIn,
-                tokenAmountIn,
-                minAmountOut,
-                maxPrice
-            );
-        } else {
-            (tokenAmountOut, spotPriceAfter) = _swapPositions(
-                tokenIn,
-                tokenAmountIn,
-                tokenOut,
-                minAmountOut,
-                maxPrice
-            );
-        }
-
-        emit LOG_SWAP(
-            msg.sender,
-            tokenIn,
-            tokenOut,
-            tokenAmountIn,
-            tokenAmountOut
-        );
-        bPool.setPublicSwap(false);
-    }
-
-    function _swapFromCoin(
-        uint256 tokenAmountIn,
-        address tokenOut,
-        uint256 minAmountOut,
-        uint256 maxPrice
-    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
-        require(
-            tokenOut == longToken || tokenOut == shortToken,
-            "ERR_TOKEN_OUT"
-        );
-
-        Balancer bPool = Balancer(balancer);
-        IERC20(want).safeApprove(balancer, tokenAmountIn);
-
-        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
-            want,
-            tokenAmountIn,
-            tokenOut,
-            1,
-            maxPrice
-        );
-
-        //Rebalance Pool
-        uint256 newSpotPrice = _calculateSpotPrice();
-        _rebalance(newSpotPrice);
-
-        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
-    }
-
-    function _swapToCoin(
-        address tokenIn,
-        uint256 tokenAmountIn,
-        uint256 minAmountOut,
-        uint256 maxPrice
-    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
-        require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
-
-        Balancer bPool = Balancer(balancer);
-        IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
-
-        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
-            tokenIn,
-            tokenAmountIn,
-            want,
-            minAmountOut,
-            maxPrice
-        );
-
-        //Rebalance Pool
-        uint256 newSpotPrice = _calculateSpotPrice();
-        _rebalance(newSpotPrice);
-
-        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(want).transfer(msg.sender, tokenAmountOut);
-    }
-
-    function _swapPositions(
-        address tokenIn,
-        uint256 tokenAmountIn,
-        address tokenOut,
-        uint256 minAmountOut,
-        uint256 maxPrice
-    ) internal returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
-        require(tokenIn != tokenOut, "ERR_SAME_TOKEN_SWAP");
-        require(tokenIn == longToken || tokenIn == shortToken, "ERR_TOKEN_IN");
-        require(
-            tokenOut == longToken || tokenOut == shortToken,
-            "ERR_TOKEN_OUT"
-        );
-
-        Balancer bPool = Balancer(balancer);
-        IERC20(tokenIn).safeApprove(balancer, tokenAmountIn);
-
-        (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
-            tokenIn,
-            tokenAmountIn,
-            tokenOut,
-            minAmountOut,
-            maxPrice
-        );
-
-        require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
-    }
-
-    function balanceOf() external view returns (uint256) {
-        uint256 bpoolValuation = _getBalancerPoolValue();
-        return IERC20(want).balanceOf(address(this)).add(bpoolValuation);
-    }
-
-    // This function should return Total valuation of balancer pool.
-    // i.e. ( LTK + STK + Coin ) from balancer pool.
-    function _getBalancerPoolValue()
-        internal
-        view
-        returns (uint256 totalValuation)
-    {
-        uint256 poolStkBalance = IERC20(shortToken).balanceOf(
-            address(balancer)
-        );
-        uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
-
-        totalValuation = IERC20(want).balanceOf(address(balancer));
-        Balancer bpool = Balancer(balancer);
-
-        //1e19 = (18 + 6 - 5) where (MAX_BONE + tok_in_decimal - tok_out_decimals)
-
-        //get short price values in want
-        if (poolStkBalance != 0) {
-            uint256 stkSpot = bpool.getSpotPriceSansFee(want, shortToken);
-            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e18);
-            totalValuation = totalValuation.add(totalValueInCoin);
-        }
-
-        //get long price values in want
-        if (poolLtkBalance != 0) {
-            uint256 ltkSpot = bpool.getSpotPriceSansFee(want, longToken);
-            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e18);
-            totalValuation = totalValuation.add(totalValueInCoin);
-        }
-        return totalValuation;
-    }
-
-    function getExpectedOutAmount(
-        address fromToken,
-        address toToken,
-        uint256 fromTokenAmount
-    ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
-        Balancer bpool = Balancer(balancer);
-
-        require(bpool.isBound(fromToken));
-        require(bpool.isBound(toToken));
-        uint256 swapFee = bpool.getSwapFee();
-
-        uint256 tokenBalanceIn = bpool.getBalance(fromToken);
-        uint256 tokenBalanceOut = bpool.getBalance(toToken);
-
-        uint256 tokenWeightIn = bpool.getDenormalizedWeight(fromToken);
-        uint256 tokenWeightOut = bpool.getDenormalizedWeight(toToken);
-
-        tokensReturned = bpool.calcOutGivenIn(
-            tokenBalanceIn,
-            tokenWeightIn,
-            tokenBalanceOut,
-            tokenWeightOut,
-            fromTokenAmount,
-            swapFee
-        );
-
-        uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
-        uint256 effectivePrice = ((fromTokenAmount * 10**18) / tokensReturned);
-        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
-    }
-
-    function getExpectedInAmount(
-        address fromToken,
-        address toToken,
-        uint256 toTokenAmount
-    ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
-        Balancer bpool = Balancer(balancer);
-
-        require(bpool.isBound(fromToken));
-        require(bpool.isBound(toToken));
-        uint256 swapFee = bpool.getSwapFee();
-
-        uint256 tokenBalanceIn = bpool.getBalance(fromToken);
-        uint256 tokenBalanceOut = bpool.getBalance(toToken);
-
-        uint256 tokenWeightIn = bpool.getDenormalizedWeight(fromToken);
-        uint256 tokenWeightOut = bpool.getDenormalizedWeight(toToken);
-
-        tokensReturned = bpool.calcInGivenOut(
-            tokenBalanceIn,
-            tokenWeightIn,
-            tokenBalanceOut,
-            tokenWeightOut,
-            toTokenAmount,
-            swapFee
-        );
-
-        uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
-        uint256 effectivePrice = ((tokensReturned * 10**18) / toTokenAmount);
-        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
-    }
-
-    function setGovernance(address _governance) external {
-        require(msg.sender == governance, "!governance");
-        governance = _governance;
-    }
-
-    function setController(address _controller) external {
-        require(msg.sender == governance, "!governance");
-        controller = _controller;
-    }
-
-    function setSwapFee(uint256 _swapFee) external {
-        require(msg.sender == governance, "!governance");
-        Balancer(balancer).setSwapFee(_swapFee);
-    }
-
-    /********** BPool Methods for UI *********/
-    function getBalance(address token) external view returns (uint256) {
-        return Balancer(balancer).getBalance(token);
-    }
-
-    function getSwapFee() external view returns (uint256) {
-        return Balancer(balancer).getSwapFee();
-    }
-
-    function isBound(address token) external view returns (bool) {
-        return Balancer(balancer).isBound(token);
     }
 }

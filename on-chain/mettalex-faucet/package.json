@@ -1,0 +1,16 @@
+{
+  "name": "mettalex-faucet",
+  "version": "1.0.0",
+  "description": "The purpose of this contract is to have a faucet of coin tokens (USDT) for testnet users. It contains a `cap` limit for amount of tokens which can be borrowed by a user in given `dailyLimit` time.",
+  "main": "networks.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@openzeppelin/cli": "^2.8.2",
+    "@openzeppelin/contracts": "^2.5.1"
+  }
+}

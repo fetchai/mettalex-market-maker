@@ -1,0 +1,4 @@
+requests==2.23.0
+path==15.0.0
+pathlib==1.0.1
+web3==5.13.0

@@ -22,29 +22,53 @@ branches and appropriate CI/CD setup however that is a refinement for later.
   a starting point but then modify to interact with a non-finalised pool and price updates.
 
 
-# Deploying for local development
+## Getting started
+Get the code from github
+    
+    git clone git@github.com:fetchai/mettalex-market-maker.git
+
+Make sure Node.js and python (pip3) is already setup
+
+To initialise project setup:
+
+    cd on-chain/
+    make init
+
+# Local development setup
   Start a local ganache blockchain with `npx ganache-cli`
 
-## Python setup
-From this directory the `scripts/mettalex_contract_setup.py` script will deploys or connect the contracts.
+  To install ganache-cli:
+
+      npm install -g ganache-cli
+
+## Script setup
+From this directory the `scripts/mettalex_contract_setup.py` script deploys or connect the contracts. After deployment, contract addresses are stored in contract_cache.json.
+
+
+* To deploy all the contracts and get their instances, run following command:
+
+    `$python3 mettalex_contract_setup.py -a setup -n local -v 2`
+
 We can provide the contract addresses to `scripts/contract-cache/contract_address.json` if we want to connect the existing contracts.
 If the address left blank, it will be automatically deployed by the script.
-
 ### Script options:
-    (feature-token) >> python setup_contracts.py --help
-    usage: Mettalex System Setup [-h] [--action ACTION] [--network NETWORK]
-    
-    optional arguments:
-      -h, --help            show this help message and exit
-      --action ACTION, -a ACTION
-                        Action to perform: connect, deploy (default), setup
-      --network NETWORK, -n NETWORK
-                        For connecting to local, kovan or bsc-testnet network
+    -h, --help            
+    show this help message and exit
 
+    --action ACTION, -a ACTION
+    Action to perform: connect, deploy (default), setup
+
+    --network NETWORK, -n NETWORK
+    For connecting to local, kovan or bsc-testnet network
+
+    --strategy STRATEGY, -v STRATEGY
+    For getting strategy version we want to deploy DEX for
+
+
+For using strategy V2, we use 2 with `-v` option. 
 
 ### Output:
 
-    $python setup_contracts.py -a setup
     Deploying contracts
     Whitelisting Mettalex vault to mint position tokens
     Long Position whitelist state for 0x504AD882Fa8D0f8fc8e9935aEF0307FF55F3AC75 changed from False to True
