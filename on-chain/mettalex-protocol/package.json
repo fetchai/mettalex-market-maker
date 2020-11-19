@@ -1,0 +1,22 @@
+{
+  "scripts": {
+    "test": "npx mocha --exit --recursive test --timeout 12000",
+    "compile": "npx truffle compile",
+    "coverage": "npx truffle run coverage"
+  },
+  "dependencies": {
+    "truffle": "^5.1.39",
+    "web3": "^1.2.1",
+    "@openzeppelin/contracts": "2.3.0"
+  },
+  "devDependencies": {
+    "@openzeppelin/test-environment": "^0.1.4",
+    "@openzeppelin/test-helpers": "^0.5.5",
+    "chai": "^4.2.0",
+    "mocha": "^7.1.2",
+    "solidity-coverage": "^0.7.9"
+  },
+  "engines": {
+    "node": ">=12.17.0"
+  }
+}
