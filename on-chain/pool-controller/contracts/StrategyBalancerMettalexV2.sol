@@ -426,7 +426,7 @@ contract StrategyBalancerMettalexV2 {
      * of _from token
      * @param fromToken address The address of _from token
      * @param toToken address The address of _to token
-     * @param toTokenAmount uint256 The amount of _from token to swap
+     * @param fromTokenAmount uint256 The amount of _from token to swap
      * @return The _to amount expected after swapping given amount of _from token
      * @return The price impact in swapping
      */
