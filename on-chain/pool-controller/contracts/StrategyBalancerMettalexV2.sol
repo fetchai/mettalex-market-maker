@@ -596,9 +596,6 @@ contract StrategyBalancerMettalexV2 {
             wt[1] = wt[1].mul(50);
             wt[2] = wt[2].mul(50);
         }
-
-        //        wt[1] = bal[1].mul(100 ether).mul(price.dl).mul(price.spot.sub(price.floor)).div(price.range).div(d).div(2);
-        //        wt[2] = bal[2].mul(100 ether).mul(C).mul(price.cap.sub(price.spot)).div(price.range).div(d).div(2);
         return wt;
     }
 
@@ -834,8 +831,6 @@ contract StrategyBalancerMettalexV2 {
 
         totalValuation = IERC20(want).balanceOf(address(balancer));
         IBalancer bpool = IBalancer(balancer);
-
-        //1e19 = (18 + 6 - 5) where (MAX_BONE + tok_in_decimal - tok_out_decimals)
 
         //get short price values in want
         if (poolStkBalance != 0) {
