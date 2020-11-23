@@ -15,4 +15,4 @@ that is rebalanced to set position token prices in line with the underlying asse
 
 A separate Pool Controller contract is used for supplying tokens to the Balancer pool.
 
-![Mettalex architecture](assets/mettalex_outline.png)
+![Mettalex Outline](Mettalex Diagram_Outlines_v9.3_White.png "Mettalex Outline")
