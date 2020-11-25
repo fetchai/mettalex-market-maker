@@ -71,6 +71,29 @@ def set_amm_state(x_c, x_l, x_s, v, C, sF=0):
     return [x_c, x_l, x_s, sol[w_c], sol[w_l], sol[w_s]]
 
 
+def set_amm_state_rebalance(C, sF=0):
+    # Weights
+    w_c, w_l, w_s = sp.symbols('w_c w_l w_s', positive=True)
+    # Balances
+    x_c, x_l, x_s = sp.symbols('x_c x_l x_s', positive=True)
+    # Change in coin due to mint or redeem
+    d_c = sp.symbols('{\Delta}x_c')
+    # Constraints
+
+    # Constraint 1: Weights sum to 1
+    wt_sum = sp.Equality(w_c + w_l + w_s, 1)
+    # Constraint 2: Sum of position token spot prices is collateral backing them
+    price_sum = sp.Equality(
+        calc_spot_price(x_c, w_c, x_l, w_l, sF) +
+        calc_spot_price(x_c, w_c, x_s, w_s, sF),
+        C
+    )
+    # Constraint 3: Mint of redeem position tokens in pairs
+    mint_sum = x_c - d_c + x_l + d_c/C + x_s + d_c/C
+
+    # Rebalance
+
+
 def get_amm_spot_prices(state, sF=0):
     """Return L and S prices in units of coin
     """
@@ -174,20 +197,33 @@ def simple_swap_to_coin(
 def simulate_swaps_from_coin(x_c_0, x_l_0, x_s_0, v, C, from_coin=True, c_max=1000, n_row=1, offset=0, f=None):
     initial_state = set_amm_state(x_c_0, x_l_0, x_s_0, v, C)
 
-    coin_in = np.linspace(1., c_max, 20)
-    states, coin_out, avg_price = zip(
+    coin_in_short = np.linspace(-c_max, 1., 20)
+    coin_in_long = np.linspace(1., c_max, 20)
+    # Swap coin for short
+    states_short, coin_out_short, avg_price_short = zip(
+        *[simple_swap_from_coin(initial_state, -t, coin_per_pair=100, rebalance=True, to_long=False)
+          for t in coin_in_short])
+
+    # Swap coin for long
+    states_long, coin_out_long, avg_price_long = zip(
         *[simple_swap_from_coin(initial_state, t, coin_per_pair=100, rebalance=True)
-          for t in coin_in])
-    # No rebalancing, raw C-> L (or C->S) swap
-    states_raw, tok_out_raw, avg_price_raw = zip(
-        *[simple_swap_from_coin(initial_state, c, coin_per_pair=100, rebalance=False) for c in coin_in])
+          for t in coin_in_long])
+
+    coin_in = np.concatenate([coin_in_short, coin_in_long])
+    states = np.concatenate([np.array(states_short), np.array(states_long)])
+    # coin_out = [] + coin_out_short + coin_out_long
+    avg_price = np.concatenate([np.array(avg_price_short), np.array(avg_price_long)])
+
+    # # No rebalancing, raw C-> L (or C->S) swap
+    # states_raw, tok_out_raw, avg_price_raw = zip(
+    #     *[simple_swap_from_coin(initial_state, c, coin_per_pair=100, rebalance=False) for c in coin_in])
 
     if n_row == 1 and not f:
         _ = plt.figure(figsize=(10, 4))
     # Pool balance
 
     balances = np.array([get_amm_balance(s) for s in states])
-    balances_raw = np.array([get_amm_balance(s) for s in states_raw])
+    # balances_raw = np.array([get_amm_balance(s) for s in states_raw])
 
     _ = plt.subplot(n_row, 2, 1 + 2 * offset)
     _ = plt.plot(coin_in, balances)
@@ -202,8 +238,9 @@ def simulate_swaps_from_coin(x_c_0, x_l_0, x_s_0, v, C, from_coin=True, c_max=10
     _ = plt.subplot(n_row, 2, 2 + 2 * offset)
     spot_prices = np.array([get_amm_spot_prices(s) for s in states])
     _ = plt.plot(coin_in, spot_prices)
-    _ = plt.plot(coin_in, np.sum(spot_prices, axis=1))
-    _ = plt.plot(coin_in, avg_price)
-    _ = plt.legend(['Long', 'Short', 'Long + Short', 'Average Price'])
+    _ = plt.plot(coin_in, np.sum(spot_prices, axis=1), alpha=0.5)
+    _ = plt.plot(coin_in, avg_price, alpha=0.2, c='k', linestyle=':')
+    _ = plt.legend(['Long', 'Short', 'Long + Short', 'CoinIn/TokOut'])
     _ = plt.xlabel('Coin In')
     _ = plt.ylabel('Spot Price')
+
