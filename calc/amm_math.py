@@ -13,6 +13,21 @@ def calc_balancer_invariant(x_c, x_l, x_s, w_c, w_l, w_s):
     return (x_c**w_c)*(x_l**w_l)*(x_s**w_s)
 
 
+def calc_token_balance(x_c, x_o, w_c, w_o, k):
+    """Calculate token balance to lie on curve such that
+    k = invariant(x_c, x_t, x_o, w_c, 1 - w_c - w_o, w_o)
+    Typically would plot x_t vs x_c varying with other parameters fixed
+
+    :return: x_t: token balance e.g. long as function of:
+    :param x_c: coin balance
+    :param x_o: other token balance e.g. short
+    :param w_c: weight coin
+    :param w_o: other token weight
+    :param k: curve invariant
+    """
+    return (k/(x_c**w_c)/(x_o**w_o))**(1/(1 - w_c - w_o))
+
+
 def calc_spot_price(bI, wI, bO, wO, sF=0):
     """
     calcSpotPrice                                                                             //
