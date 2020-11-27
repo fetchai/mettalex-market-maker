@@ -6,12 +6,18 @@ const {
   expectRevert,
   constants
 } = require("@openzeppelin/test-helpers");
+const addresses = require("../../scripts/contract-cache/contract_cache.json");
 
 const StrategyContract = contract.fromArtifact("StrategyBalancerMettalexV2");
 
-const [governance] = accounts;
-const nullAddress = constants.ZERO_ADDRESS;
-
 describe("Strategy", () => {
-  beforeEach(async () => {});
+  beforeEach(async () => {
+    const strategyAddress = addresses.PoolController;
+    this.strategy = await StrategyContract.at(strategyAddress);
+  });
+
+  it("should get want address", async () => {
+    const wantAddress = await this.strategy.want();
+    console.log(wantAddress);
+  });
 });
