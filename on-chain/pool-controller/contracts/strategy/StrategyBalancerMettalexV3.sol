@@ -508,6 +508,12 @@ contract StrategyBalancerMettalexV3 {
 
         //get spot price from balancer pool
         IBalancer bPool = IBalancer(balancer);
+
+        if (!bPool.isBound(want)) {
+            spotPrice = mVault.priceSpot();
+            return spotPrice;
+        }
+
         uint256 priceShort = bPool.getSpotPrice(want, shortToken);
         uint256 priceLong = bPool.getSpotPrice(want, longToken);
 
