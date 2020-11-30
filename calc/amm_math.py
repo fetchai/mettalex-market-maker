@@ -87,6 +87,8 @@ def set_amm_state(x_c, x_l, x_s, v, C, sF=0):
 
 
 def set_amm_state_rebalance(C, sF=0):
+    # WIP: set price sum to C using mint/redeem operations
+
     # Weights
     w_c, w_l, w_s = sp.symbols('w_c w_l w_s', positive=True)
     # Balances
@@ -107,6 +109,7 @@ def set_amm_state_rebalance(C, sF=0):
     mint_sum = x_c - d_c + x_l + d_c/C + x_s + d_c/C
 
     # Rebalance
+    pass
 
 
 def get_amm_spot_prices(state, sF=0):
@@ -130,6 +133,7 @@ def get_amm_balance(state):
     return state[0] + state[1]*spot_prices[0] + state[2]*spot_prices[1]
 
 
+# Actions that we can perform on state
 def simple_swap_from_coin(state, aI, to_long=True, sF=0, coin_per_pair=1,
                           rebalance=False, rebalance_fun=set_amm_state):
     """Swap a_c coins in for specified token (1=L, 2=S)
@@ -207,6 +211,60 @@ def simple_swap_to_coin(
         )
 
     return new_state, aO, avg_price
+
+
+def mint_redeem(state, a_c, coin_per_pair=100, rebalance=False, **kwargs):
+    n_c_0, n_l_0, n_s_0, w_c_0, w_l_0, w_s_0 = state
+    if a_c >= 0:
+        # Mint
+        if n_c_0 < a_c:
+            raise ValueError('Insufficent coin')
+        n_c_1 = n_c_0 - a_c
+        n_l_1 = n_l_0 + a_c / coin_per_pair
+        n_s_1 = n_s_0 + a_c / coin_per_pair
+        tok_out = a_c / coin_per_pair
+    else:
+        # Redeem
+        if a_c > min(n_s_0, n_l_0):
+            raise ValueError('Insufficent token')
+        n_c_1 = n_c_0 + a_c * coin_per_pair
+        n_l_1 = n_l_0 - a_c
+        n_s_1 = n_s_0 - a_c
+        tok_out = a_c * coin_per_pair
+
+    avg_price = coin_per_pair / 2
+
+    if rebalance:
+        # Keep same spot price as original
+        # set_amm_state(x_c, x_l, x_s, v, C)
+        v = get_amm_spot_prices(state)[0] / coin_per_pair
+        new_state = set_amm_state(n_c_1, n_l_1, n_s_1, v, coin_per_pair)
+    else:
+        new_state = [n_c_1, n_l_1, n_s_1, w_c_0, w_l_0, w_s_0]
+
+    return new_state, tok_out, avg_price
+
+
+def perform_action(action, s_0, a_c, coin_per_pair=100, **swap_params):
+    """Uniform interface for performing actions on AMM state
+
+    :param action:
+    :param s_0:
+    :param a_c:
+    :param coin_per_pair:
+    :param swap_params:
+    :return:
+    """
+    if action == 'swap_from_coin':
+        s_1, tok_out, avg_price = simple_swap_from_coin(s_0, a_c, coin_per_pair=coin_per_pair, **swap_params)
+    elif action == 'swap_to_coin':
+        s_1, tok_out, avg_price = simple_swap_to_coin(s_0, a_c, coin_per_pair=coin_per_pair, **swap_params)
+    elif action == 'mint_redeem':
+        # Copy from other notebook
+        s_1, tok_out, avg_price = mint_redeem(s_0, a_c, coin_per_pair=coin_per_pair, **swap_params)
+    else:
+        raise ValueError('Unknown action')
+    return s_1, tok_out, avg_price
 
 
 def simulate_swaps_from_coin(x_c_0, x_l_0, x_s_0, v, C, from_coin=True, c_max=1000, n_row=1, offset=0, f=None):
