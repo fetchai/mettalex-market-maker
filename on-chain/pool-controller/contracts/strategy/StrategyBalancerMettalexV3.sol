@@ -1,14 +1,14 @@
 pragma solidity ^0.5.16;
 
-import "./interfaces/IBalancer.sol";
-import "./interfaces/IERC20.sol";
-import "./interfaces/IMettalexVault.sol";
-import "./interfaces/IYController.sol";
+import "../interfaces/IBalancer.sol";
+import "../interfaces/IERC20.sol";
+import "../interfaces/IMettalexVault.sol";
+import "../interfaces/IYController.sol";
 
-import "./lib/Address.sol";
-import "./lib/SignedSafeMath.sol";
-import "./lib/SafeMath.sol";
-import "./lib/SafeERC20.sol";
+import "../lib/Address.sol";
+import "../lib/SignedSafeMath.sol";
+import "../lib/SafeMath.sol";
+import "../lib/SafeERC20.sol";
 
 /**
  * @title StrategyBalancerMettalexV3
