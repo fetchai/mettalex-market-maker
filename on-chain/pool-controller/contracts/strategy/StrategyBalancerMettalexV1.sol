@@ -31,7 +31,7 @@ import "./lib/SafeERC20.sol";
 
 */
 
-contract StrategyBalancerMettalex {
+contract StrategyBalancerMettalexV1 {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
