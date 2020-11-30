@@ -715,12 +715,12 @@ def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=No
     collateralAmount_unitless = collateralAmount * \
         10 ** (coin.functions.decimals().call())
     tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
-        {'from': customAccount, 'gas': 5_000_000}
+        {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     tx_hash = vault.functions.mintFromCollateralAmount(collateralAmount_unitless).transact(
-        {'from': customAccount, 'gas': 5_000_000}
+        {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(
@@ -925,6 +925,15 @@ def get_pool_details(strategy, coin, ltk, stk):
     swap_fee = strategy.functions.getSwapFee().call()
 
     return coin_balance, ltk_balance, stk_balance, swap_fee
+
+
+def redeem(w3, vault, amount):
+    acct = w3.eth.defaultAccount
+    tx_hash = vault.functions.redeemPositions(amount).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    tx_receipt.gasUsed
 
 
 if __name__ == '__main__':
