@@ -93,9 +93,7 @@ def get_contracts(w3, strategy_version=1):
         __file__).parent / ".." / 'mettalex-yearn' / 'build' / 'contracts' / 'yVault.json'
 
     # Strategy contracts
-    build_file_name = 'StrategyBalancerMettalex.json'
-    if (strategy_version == 2):
-        build_file_name = 'StrategyBalancerMettalexV2.json'
+    build_file_name = f'StrategyBalancerMettalexV{strategy_version}.json'
 
     pool_controller_build_file = Path(
         __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / build_file_name
@@ -953,7 +951,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     assert args.network in {'local', 'kovan', 'bsc-testnet'}
-    assert args.strategy in {'1', '2'}
+    assert args.strategy in {'1', '2', '3', '4'}
 
     w3, admin = connect(args.network, 'admin')
     contracts = get_contracts(w3, int(args.strategy))
@@ -965,7 +963,7 @@ if __name__ == '__main__':
     elif args.action == 'setup':
         #  will deploy and do the full setup
         w3, admin, deployed_contracts = full_setup(
-            w3, admin, contracts=contracts)
+            w3, admin, contracts=contracts, price=2500)
     else:
         raise ValueError(f'Unknown action: {args.action}')
 
