@@ -11,7 +11,7 @@ import "./lib/SafeMath.sol";
 import "./lib/SafeERC20.sol";
 
 /**
- * @title StrategyBalancerMettalexV2
+ * @title StrategyBalancerMettalexV3
  * @notice A strategy must implement the following calls:
  * 1. deposit()
  * 2. withdraw(address) - must exclude any tokens used in the yield - Controller role
@@ -25,7 +25,7 @@ import "./lib/SafeERC20.sol";
  * USDT + LTK + STK into balancer
  * (No yield farming, just Balancer pool fees)
  */
-contract StrategyBalancerMettalexV2 {
+contract StrategyBalancerMettalexV3 {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
@@ -635,58 +635,62 @@ contract StrategyBalancerMettalexV2 {
         uint256[3] memory balance,
         address[3] memory tokens
     ) internal {
+        int256 tempDelta;
+        uint256 temp;
+        address tempAddress;
+
         if (delta[0] > delta[1]) {
-            int256 tempDelta = delta[0];
+            tempDelta = delta[0];
             delta[0] = delta[1];
             delta[1] = tempDelta;
 
-            uint256 tempBalance = balance[0];
+            temp = balance[0];
             balance[0] = balance[1];
-            balance[1] = tempBalance;
+            balance[1] = temp;
 
-            uint256 tempWt = wt[0];
+            temp = wt[0];
             wt[0] = wt[1];
-            wt[1] = tempWt;
+            wt[1] = temp;
 
-            address tempToken = tokens[0];
+            tempAddress = tokens[0];
             tokens[0] = tokens[1];
-            tokens[1] = tempToken;
+            tokens[1] = tempAddress;
         }
 
         if (delta[1] > delta[2]) {
-            int256 tempDelta = delta[1];
+            tempDelta = delta[1];
             delta[1] = delta[2];
             delta[2] = tempDelta;
 
-            uint256 tempBalance = balance[1];
+            temp = balance[1];
             balance[1] = balance[2];
-            balance[2] = tempBalance;
+            balance[2] = temp;
 
-            uint256 tempWt = wt[1];
+            temp = wt[1];
             wt[1] = wt[2];
-            wt[2] = tempWt;
+            wt[2] = temp;
 
-            address tempToken = tokens[1];
+            tempAddress = tokens[1];
             tokens[1] = tokens[2];
-            tokens[2] = tempToken;
+            tokens[2] = tempAddress;
         }
 
         if (delta[0] > delta[1]) {
-            int256 tempDelta = delta[0];
+            tempDelta = delta[0];
             delta[0] = delta[1];
             delta[1] = tempDelta;
 
-            uint256 tempBalance = balance[0];
+            temp = balance[0];
             balance[0] = balance[1];
-            balance[1] = tempBalance;
+            balance[1] = temp;
 
-            uint256 tempWt = wt[0];
+            temp = wt[0];
             wt[0] = wt[1];
-            wt[1] = tempWt;
+            wt[1] = temp;
 
-            address tempToken = tokens[0];
+            tempAddress = tokens[0];
             tokens[0] = tokens[1];
-            tokens[1] = tempToken;
+            tokens[1] = tempAddress;
         }
 
         IBalancer bPool = IBalancer(balancer);
@@ -695,23 +699,11 @@ contract StrategyBalancerMettalexV2 {
         bPool.rebind(tokens[2], balance[2], wt[2]);
     }
 
-    function _mintPositions(uint256 _amount)
-        internal
-        returns (uint256 ltk, uint256 stk)
-    {
+    function _mintPositions(uint256 _amount) internal {
         IERC20(want).safeApprove(mettalexVault, 0);
         IERC20(want).safeApprove(mettalexVault, _amount);
 
-        uint256 strategyLtk = IERC20(longToken).balanceOf(address(this));
-        uint256 strategyStk = IERC20(shortToken).balanceOf(address(this));
-
         IMettalexVault(mettalexVault).mintFromCollateralAmount(_amount);
-
-        uint256 afterMintLtk = IERC20(longToken).balanceOf(address(this));
-        uint256 afterMintStk = IERC20(shortToken).balanceOf(address(this));
-
-        ltk = afterMintLtk.sub(strategyLtk);
-        stk = afterMintStk.sub(strategyStk);
     }
 
     function _withdrawAll() internal {
@@ -854,6 +846,7 @@ contract StrategyBalancerMettalexV2 {
             address(this)
         );
         uint256 wantToVault = wantBeforeMintandDeposit.div(2);
+
         _mintPositions(wantToVault);
 
         uint256 wantAfterMint = IERC20(want).balanceOf(address(this));
@@ -882,10 +875,8 @@ contract StrategyBalancerMettalexV2 {
         bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
         bal[2] = strategyWant.add(balancerWant);
-        uint256[3] memory wt = _calcDenormWeights(
-            bal,
-            IMettalexVault(mettalexVault).priceSpot()
-        );
+        uint256 newSpotPrice = _calculateSpotPrice();
+        uint256[3] memory wt = _calcDenormWeights(bal, newSpotPrice);
 
         IBalancer bPool = IBalancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
@@ -894,9 +885,9 @@ contract StrategyBalancerMettalexV2 {
         bool isLtkBound = bPool.isBound(longToken);
 
         if (isStkBound != true && isLtkBound != true && isWantBound != true) {
-            bPool.bind(shortToken, strategyStk.add(balancerStk), wt[0]);
-            bPool.bind(longToken, strategyLtk.add(balancerLtk), wt[1]);
-            bPool.bind(want, strategyWant.add(balancerWant), wt[2]);
+            bPool.bind(shortToken, bal[0], wt[0]);
+            bPool.bind(longToken, bal[1], wt[1]);
+            bPool.bind(want, bal[2], wt[2]);
         } else {
             int256[3] memory delta;
             address[3] memory tokens = [shortToken, longToken, want];
