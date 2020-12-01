@@ -225,11 +225,12 @@ def mint_redeem(state, a_c, coin_per_pair=100, rebalance=False, **kwargs):
         tok_out = a_c / coin_per_pair
     else:
         # Redeem
-        if a_c > min(n_s_0, n_l_0):
+        r_c = -a_c
+        if r_c > min(n_s_0, n_l_0):
             raise ValueError('Insufficent token')
-        n_c_1 = n_c_0 + a_c * coin_per_pair
-        n_l_1 = n_l_0 - a_c
-        n_s_1 = n_s_0 - a_c
+        n_c_1 = n_c_0 + r_c * coin_per_pair
+        n_l_1 = n_l_0 - r_c
+        n_s_1 = n_s_0 - r_c
         tok_out = a_c * coin_per_pair
 
     avg_price = coin_per_pair / 2
@@ -241,6 +242,93 @@ def mint_redeem(state, a_c, coin_per_pair=100, rebalance=False, **kwargs):
         new_state = set_amm_state(n_c_1, n_l_1, n_s_1, v, coin_per_pair)
     else:
         new_state = [n_c_1, n_l_1, n_s_1, w_c_0, w_l_0, w_s_0]
+
+    return new_state, tok_out, avg_price
+
+
+def deposit_withdraw(
+        state, a_c, coin_per_pair=100, oracle_price=50, deposit=True,
+        rebalance=True, rebalance_type='oracle', token_fraction=0.5, **kwargs
+):
+    """
+
+    :param state:
+    :param a_c:
+    :param coin_per_pair:
+    :param oracle_price:
+    :param rebalance:
+    :param rebalance_type:
+    :param token_fraction:
+    :param kwargs:
+    :return:
+    """
+    n_c_0, n_l_0, n_s_0, w_c_0, w_l_0, w_s_0 = state
+    amm_price = get_amm_spot_prices(state)[0]
+
+    if deposit:
+        # Deposit liquidity
+        mid_state = mint_redeem(
+            [n_c_0 + a_c, n_l_0, n_s_0, w_c_0, w_l_0, w_s_0],
+            a_c*token_fraction, coin_per_pair=coin_per_pair
+        )[0]
+        n_c_1, n_l_1, n_s_1, w_c_1, w_l_1, w_s_1 = mid_state
+        tok_out = -a_c
+    else:
+        # Withdraw liquidity
+        # Step 1 convert pairs back to collateral
+        mid_state = mint_redeem(
+            state, -a_c*token_fraction/coin_per_pair, coin_per_pair=coin_per_pair
+        )[0]
+        # Use subscript a, b, c, etc for internal calculations here
+        n_c_a, n_l_1, n_s_1, w_c_1, w_l_1, w_s_1 = mid_state
+        # Step 2 withdraw collateral, this will be from coin in pool
+        # plus redeemed position tokens
+        n_c_1 = n_c_a - a_c
+        tok_out = a_c
+
+    if rebalance:
+        if rebalance_type == 'oracle':
+            new_state = set_amm_state(
+                n_c_1, n_l_1, n_s_1, v=oracle_price/coin_per_pair, C=coin_per_pair
+            )
+            avg_price = oracle_price
+        elif rebalance_type == 'amm':
+            new_state = set_amm_state(
+                n_c_1, n_l_1, n_s_1,
+                v=amm_price/coin_per_pair, C=coin_per_pair
+            )
+            avg_price = amm_price
+        elif rebalance_type == 'weighted':
+            if deposit:
+                # Deposit - average oracle and amm prices
+                # Approximation to exact price change needed to get spot
+                # price correct after removing imbalance
+                balance_0 = n_c_0 + min(n_s_0, n_l_0)*coin_per_pair
+                balance_t = balance_0 + a_c
+                amm_wt = balance_0/balance_t  # Existing liquidity weight
+                oracle_wt = a_c/balance_t   # New liquidity weight
+                v = (amm_price*amm_wt + oracle_price*oracle_wt)/coin_per_pair
+            else:
+                # Withdraw
+                # WIP: need to amplify distance from spot price caused by imbalance
+                # in order that reversing an imbalance trade returns to spot
+                raise ValueError('Not implemented')
+                # balance_0 = n_c_1 + min(n_s_1, n_l_1) * coin_per_pair
+                # balance_1 = balance_0 - a_c
+                # amm_wt = balance_1 / balance_0  # Existing liquidity weight
+                # oracle_wt = balance_1 / balance_0  # New liquidity weight
+                # v = max(min(((amm_price - oracle_price)*amm_wt + oracle_price)/coin_per_pair, 1.), 0.)
+            new_state = set_amm_state(
+                n_c_1, n_l_1, n_s_1,
+                v=v,
+                C=coin_per_pair
+            )
+            avg_price = amm_price*amm_wt + oracle_price*oracle_wt
+        else:
+            raise ValueError('Unknown rebalance type: ', rebalance_type)
+    else:
+        new_state = mid_state
+        avg_price = get_amm_spot_prices(mid_state)[0]
 
     return new_state, tok_out, avg_price
 
@@ -262,8 +350,15 @@ def perform_action(action, s_0, a_c, coin_per_pair=100, **swap_params):
     elif action == 'mint_redeem':
         # Copy from other notebook
         s_1, tok_out, avg_price = mint_redeem(s_0, a_c, coin_per_pair=coin_per_pair, **swap_params)
+    elif action == 'deposit':
+        s_1, tok_out, avg_price = deposit_withdraw(
+            s_0, a_c, coin_per_pair=coin_per_pair, deposit=True, **swap_params)
+    elif action == 'withdraw':
+        s_1, tok_out, avg_price = deposit_withdraw(
+            s_0, a_c, coin_per_pair=coin_per_pair, deposit=False, **swap_params)
+
     else:
-        raise ValueError('Unknown action')
+        raise ValueError('Unknown action', action)
     return s_1, tok_out, avg_price
 
 
