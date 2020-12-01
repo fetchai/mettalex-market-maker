@@ -1,49 +1,42 @@
-pragma solidity ^0.5.2;
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity 0.6.2;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20Pausable.sol";
-import "@openzeppelin/contracts/ownership/Ownable.sol";
+import "OpenZeppelin/openzeppelin-contracts@3.0.0/contracts/access/AccessControl.sol";
+import "OpenZeppelin/openzeppelin-contracts@3.0.0/contracts/token/ERC20/ERC20Pausable.sol";
+import "OpenZeppelin/openzeppelin-contracts@3.0.0/contracts/token/ERC20/ERC20Burnable.sol";
 
 /**
- * @title PositionToken
+ * @dev {ERC20} token, including:
+ *
+ *  - ability for holders to burn (destroy) their tokens
+ *  - a minter role that allows for token minting (creation)
+ *  - a pauser role that allows to stop all token transfers
+ *
+ * This contract uses {AccessControl} to lock permissioned functions using the
+ * different roles - head to its documentation for details.
+ *
+ * The account that deploys the contract will be granted the minter and pauser
+ * roles, as well as the default admin role, which will let it grant both minter
+ * and pauser roles to other accounts.
  */
-contract PositionToken is ERC20Pausable, Ownable {
-    string public name;
-    string public symbol;
-    uint8 public decimals = 18;
+contract PositionToken is Context, AccessControl, ERC20, ERC20Pausable {
+    bytes32 public constant WHITELIST_ROLE = keccak256("WHITELIST_ROLE");
     bool public settled = false;
-    uint256 public version;
-
-    mapping(address => bool) public whitelist;
-
-    event Mint(address indexed _to, uint256 _value);
-    event Burn(address indexed _to, uint256 _value);
-
+    uint256 public version; 
     /**
-     * @dev The PositionToken constructor sets initial values.
-     * @param _name string The name of the Position Token.
-     * @param _symbol string The symbol of the Position Token.
-     * @param _decimals uint8 The decimal value of Position Token.
+     * @dev Grants `DEFAULT_ADMIN_ROLE`, `MINTER_ROLE` and `PAUSER_ROLE` to the
+     * account that deploys the contract.
+     *
+     * See {ERC20-constructor}.
      */
-    constructor(
-        string memory _name,
-        string memory _symbol,
-        uint8 _decimals,
-        uint256 _version
-    ) public {
-        name = _name;
-        symbol = _symbol;
-        decimals = _decimals;
-        version = _version;
-        whitelist[msg.sender] = true;
+    constructor(string memory name, 
+                string memory symbol, 
+                uint256 _version) public ERC20(name, symbol) {
+        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _setupRole(WHITELIST_ROLE, _msgSender());
+        version = _version; 
     }
 
-    /**
-     * @dev Throws if called by any account other than Whitelisted users.
-     */
-    modifier onlyWhitelisted() {
-        require(whitelist[msg.sender] == true, "WHITELISTED_ONLY");
-        _;
-    }
 
     /**
      * @dev Throws if the contract is settled
@@ -53,49 +46,79 @@ contract PositionToken is ERC20Pausable, Ownable {
         _;
     }
 
-    /**
-     * @dev Changes the whitelist status of a user.
-     * @param who address The address of user whose whitelisted value is to be modified.
-     * @param enable bool The boolean value indicating whether user is whitelisted.
+   /**
+     * @dev Throws if called by any account other than Whitelisted users.
      */
-    function setWhitelist(address who, bool enable) public onlyOwner {
-        whitelist[who] = enable;
+    modifier onlyWhitelisted() {
+        require(hasRole(WHITELIST_ROLE, _msgSender()), "signer must be on whitelist");
+        _;
     }
 
     /**
-     * @dev Changes the whitelist status of a user.
+     * @dev Creates `amount` new tokens for `to`.
+     *
+     * See {ERC20-_mint}.
+     *
+     * Requirements:
+     *
+     * - the caller must have the `MINTER_ROLE`.
      */
-    function updateNameToSettled() public onlyOwner notSettled {
-        settled = true;
-        name = string(abi.encodePacked(name, " (settled)"));
+ 
+   function mint(address to, uint256 amount) public virtual notSettled onlyWhitelisted {
+        _mint(to, amount);
+    }
+
+
+    function burn(uint256 amount) external notSettled onlyWhitelisted{
+        _burn(_msgSender(), amount);
     }
 
     /**
-     * @dev Mints position tokens for a user.
-     * @param _to address The address of beneficiary.
-     * @param _value uint256 The amount of tokens to be minted.
+     * @dev Destroys `amount` tokens from `account`, deducting from the caller's
+     * allowance.
+     *
+     * See {ERC20-_burn} and {ERC20-allowance}.
+     *
+     * Requirements:
+     *
+     * - the caller must have allowance for ``accounts``'s tokens of at least
+     * `amount`.
      */
-    function mint(address _to, uint256 _value)
-        public
-        notSettled
-        onlyWhitelisted
-        whenNotPaused
-    {
-        _mint(_to, _value);
-        emit Mint(_to, _value);
+    function burnFrom(address account, uint256 amount) external notSettled onlyWhitelisted {
+        uint256 decreasedAllowance = allowance(account, _msgSender()).sub(amount, "ERC20: burn amount exceeds allowance");
+
+        _approve(account, _msgSender(), decreasedAllowance);
+        _burn(account, amount);
     }
 
     /**
-     * @dev Burns position tokens of a user.
-     * @param _from address The address of beneficent.
-     * @param _value uint256 The amount of tokens to be burned.
+     * @dev Pauses all token transfers.
+     *
+     * See {ERC20Pausable} and {Pausable-_pause}.
+     *
+     * Requirements:
+     *
+     * - the caller must have the `PAUSER_ROLE`.
      */
-    function burn(address _from, uint256 _value)
-        public
-        onlyWhitelisted
-        whenNotPaused
-    {
-        _burn(_from, _value);
-        emit Burn(_from, _value);
+    function pause() public virtual onlyWhitelisted {
+        _pause();
+    }
+
+    /**
+     * @dev Unpauses all token transfers.
+     *
+     * See {ERC20Pausable} and {Pausable-_unpause}.
+     *
+     * Requirements:
+     *
+     * - the caller must have the `PAUSER_ROLE`.
+     */
+    function unpause() public virtual onlyWhitelisted {
+        require(hasRole(WHITELIST_ROLE, _msgSender()), "signer must have pauser role to unpause");
+        _unpause();
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override (ERC20, ERC20Pausable) {
+        super._beforeTokenTransfer(from, to, amount);
     }
 }
