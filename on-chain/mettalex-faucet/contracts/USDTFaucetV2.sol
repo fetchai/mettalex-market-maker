@@ -3,7 +3,7 @@ pragma solidity ^0.5.0;
 import "./SafeMath.sol";
 import "./IUSDT.sol";
 
-contract USDTFaucet {
+contract USDTFaucetV2 {
     using SafeMath for uint256;
     uint256 public dailyLimit;
     address public tokenAddress;
@@ -21,6 +21,24 @@ contract USDTFaucet {
     modifier onlyOwner() {
         require(owner == msg.sender, "Ownable: caller is not the owner");
         _;
+    }
+
+    function getAmountWithdrawn(address _user)
+        external
+        view
+        returns (uint256 amount)
+    {
+        if (amountWithdrawn[_user] == 0) return 0;
+        amount = amountWithdrawn[_user];
+    }
+
+    function getLastWithdrawnAt(address _user)
+        external
+        view
+        returns (uint256 time)
+    {
+        if (lastWithdrawnAt[_user] == 0) return 0;
+        time = lastWithdrawnAt[_user];
     }
 
     function updateTokenAddress(address _tokenAddress) external onlyOwner {

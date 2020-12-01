@@ -93,9 +93,7 @@ def get_contracts(w3, strategy_version=1):
         __file__).parent / ".." / 'mettalex-yearn' / 'build' / 'contracts' / 'yVault.json'
 
     # Strategy contracts
-    build_file_name = 'StrategyBalancerMettalex.json'
-    if (strategy_version == 2):
-        build_file_name = 'StrategyBalancerMettalexV2.json'
+    build_file_name = f'StrategyBalancerMettalexV{strategy_version}.json'
 
     pool_controller_build_file = Path(
         __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / build_file_name
@@ -715,12 +713,12 @@ def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=No
     collateralAmount_unitless = collateralAmount * \
         10 ** (coin.functions.decimals().call())
     tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
-        {'from': customAccount, 'gas': 5_000_000}
+        {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     tx_hash = vault.functions.mintFromCollateralAmount(collateralAmount_unitless).transact(
-        {'from': customAccount, 'gas': 5_000_000}
+        {'from': acct, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(
@@ -927,6 +925,15 @@ def get_pool_details(strategy, coin, ltk, stk):
     return coin_balance, ltk_balance, stk_balance, swap_fee
 
 
+def redeem(w3, vault, amount):
+    acct = w3.eth.defaultAccount
+    tx_hash = vault.functions.redeemPositions(amount).transact(
+        {'from': acct, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    tx_receipt.gasUsed
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
     parser.add_argument(
@@ -944,7 +951,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     assert args.network in {'local', 'kovan', 'bsc-testnet'}
-    assert args.strategy in {'1', '2'}
+    assert args.strategy in {'1', '2', '3', '4'}
 
     w3, admin = connect(args.network, 'admin')
     contracts = get_contracts(w3, int(args.strategy))
@@ -956,7 +963,7 @@ if __name__ == '__main__':
     elif args.action == 'setup':
         #  will deploy and do the full setup
         w3, admin, deployed_contracts = full_setup(
-            w3, admin, contracts=contracts)
+            w3, admin, contracts=contracts, price=2500)
     else:
         raise ValueError(f'Unknown action: {args.action}')
 
