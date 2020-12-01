@@ -54,6 +54,10 @@ contract PositionToken is Context, AccessControl, ERC20, ERC20Pausable {
         _;
     }
 
+    function settle() external notSettled onlyWhitelisted {
+        settled = true;
+        }
+
     /**
      * @dev Creates `amount` new tokens for `to`.
      *
