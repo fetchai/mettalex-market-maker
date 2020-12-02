@@ -103,24 +103,28 @@ describe("Strategy", () => {
 
     ownerAddress = await this.want.owner();
 
-    console.log("-->",ownerAddress)
+    console.log("WANT owner address -->",ownerAddress)
+    console.log("Controller address -->",controller)
 
     bal = await this.want.balanceOf(ownerAddress);
-    console.log(Number(bal))
+    console.log("Onwer want balance",Number(bal))
 
     // transfer some usdt to user address for testing cases  
 
     user1 = accounts[0]
-    console.log(Number(await this.want.balanceOf(controller)))
+    console.log("Controller want balance",Number(await this.want.balanceOf(controller)))
     await this.want.transfer(controller,1000*Math.pow(10,wDecimals),{from : ownerAddress})
     console.log(Number(await this.want.balanceOf(controller)))
-    console.log("------>")
-    await web3.eth.getBalance(ownerAddress).then(console.log);
-    await web3.eth.getBalance(controller).then(console.log);
-    const x = await web3.eth.sendTransaction({from:ownerAddress, to:controller, value: '1000000000000000'})
-    console.log(x)
-    await web3.eth.getBalance(ownerAddress).then(console.log);
-    await web3.eth.getBalance(controller).then(console.log);
+    
+    // getting eth balance for owner and controller
+    web3.eth.getBalance(ownerAddress).then((x)=>{console.log("owner eth bal : ",x)});
+    web3.eth.getBalance(controller).then((x)=>{console.log("controller eth bal : ",x)});
+
+    // transferring eth from owner to controller
+    await web3.eth.sendTransaction({from:ownerAddress, to:controller, value: '1000000000000000'});
+    
+    web3.eth.getBalance(ownerAddress).then((x)=>{console.log("owner eth bal : ",x)});
+    web3.eth.getBalance(controller).then((x)=>{console.log("controller eth bal : ",x)});
     console.log("------>")
   })
 
