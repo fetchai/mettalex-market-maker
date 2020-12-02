@@ -412,3 +412,203 @@ def simulate_swaps_from_coin(x_c_0, x_l_0, x_s_0, v, C, from_coin=True, c_max=10
     _ = plt.xlabel('Coin In')
     _ = plt.ylabel('Spot Price')
 
+
+def plot_action(
+        s_0, a_c, n_c_min=5000., n_c_max=20000.,
+        action='swap_from_coin', coin_per_pair=100, **swap_params
+):
+    """Plot action performed on AMM as plot of token balances vs coin balance
+    This is similar to an indifference curve plot in micro-economics
+
+    :param s_0:
+    :param a_c:
+    :param n_c_min:
+    :param n_c_max:
+    :param action:
+    :param coin_per_pair:
+    :param swap_params:
+    :return:
+    """
+    n_c_0, n_l_0, n_s_0, w_c_0, w_l_0, w_s_0 = s_0
+    spot_l_0, spot_s_0 = get_amm_spot_prices(s_0)
+
+    s_1, tok_out, avg_price = perform_action(action, s_0, a_c, coin_per_pair=coin_per_pair, **swap_params)
+
+    n_c_1, n_l_1, n_s_1, w_c_1, w_l_1, w_s_1 = s_1
+    spot_l_1, spot_s_1 = get_amm_spot_prices(s_1)
+
+    x = np.linspace(n_c_min, n_c_max, 100).reshape(-1, 1)
+
+    # Plot initial state
+    k_0 = calc_balancer_invariant(*s_0)
+    _ = plt.plot(x, calc_token_balance(x, n_s_0, w_c_0, w_s_0, k_0),
+                 c='k', linestyle=':', alpha=0.2, label='Initial Invariant')
+    _ = plt.plot(x, calc_token_balance(x, n_l_0, w_c_0, w_l_0, k_0),
+                 c='k', linestyle=':', alpha=0.2)
+    _ = plt.plot(n_c_0, n_l_0, markerfacecolor='k', marker='o', markeredgecolor='k', markersize=8, alpha=0.2)
+    _ = plt.plot(n_c_0, n_s_0, markerfacecolor='w', marker='o', markeredgecolor='k', markersize=8, alpha=0.2)
+
+    # Plot state movement
+    if action != 'mint_redeem':
+        x_move = np.linspace(float(min(n_c_0, n_c_1)), float(max(n_c_0, n_c_1)), 100).reshape(-1, 1)
+        if n_l_1 != n_l_0:
+            # Long swap
+            _ = plt.plot(x_move, calc_token_balance(x_move, n_s_0, w_c_0, w_s_0, k_0),
+                         c='k', linestyle='-', alpha=0.5, label='Swap')
+            _ = plt.plot([n_c_0, n_c_1], [n_s_0, n_s_1], c='k', alpha=0.5)
+        else:
+            # Short swap
+            _ = plt.plot(x_move, calc_token_balance(x_move, n_l_0, w_c_0, w_l_0, k_0),
+                         c='k', linestyle='-', alpha=0.5, label='Swap')
+            _ = plt.plot([n_c_0, n_c_1], [n_l_0, n_l_1], c='k', alpha=0.5)
+    else:
+        _ = plt.plot([n_c_0, n_c_1], [[n_l_0, n_s_0], [n_l_1, n_s_1]],
+                     c='k', alpha=0.5, label='Mint/Redeem')
+
+    # Plot invariant curves without rebalance of weights for final state
+    _ = plt.plot(x, calc_token_balance(x, n_s_1, w_c_0, w_s_0, k_0),
+                 c='k', linestyle='--', alpha=0.2, label='Intermediate Invariant')
+    _ = plt.plot(x, calc_token_balance(x, n_l_1, w_c_0, w_l_0, k_0),
+                 c='k', linestyle='--', alpha=0.2)
+
+    # Plot final invariant after rebalance
+    k_1 = calc_balancer_invariant(*s_1)
+    _ = plt.plot(x, calc_token_balance(x, n_s_1, w_c_1, w_s_1, k_1),
+                 c='k', linestyle='-', alpha=0.2, label='Final Invariant')
+    _ = plt.plot(x, calc_token_balance(x, n_l_1, w_c_1, w_l_1, k_1),
+                 c='k', linestyle='-', alpha=0.2)
+
+    # Plot final state
+    ax_l = plt.plot(n_c_1, n_l_1, markerfacecolor='k', marker='o',
+                    markeredgecolor='k', markersize=12, alpha=0.5, label='Long', linestyle='none')
+    ax_s = plt.plot(n_c_1, n_s_1, markerfacecolor='w', marker='o',
+                    markeredgecolor='k', markersize=12, alpha=0.5, label='Short', linestyle='none')
+
+    _ = plt.title(
+        f'Action: {action}\n'
+        f'Tokens in: {a_c:0.2f}  Tokens out: {tok_out:0.2f}  Average Price: {avg_price:0.2f}\n'
+        + f'Old balance: {n_c_0:0.2f} Coin  {n_l_0:0.2f} Long  {n_s_0:0.2f}  Short\n'
+        + f'New balance: {n_c_1:0.2f} Coin  {n_l_1:0.2f} Long  {n_s_1:0.2f}  Short\n'
+        + f'Old spot prices: Long {spot_l_0:0.2f}  Short {spot_s_0:0.2f}\n'
+        + f'New spot prices: Long {spot_l_1:0.2f}  Short {spot_s_1:0.2f}\n'
+    )
+    _ = plt.xlabel('$n_c$')
+    _ = plt.ylabel('$n_l, n_s$')
+    _ = plt.legend()
+
+    return s_1, tok_out, avg_price
+
+
+def plot_orderbook(state, is_long=True, **plot_args):
+    tok_ind = 1 if is_long else 2
+
+    sell_volume = np.flip(np.linspace(float(state[tok_ind] / 1000.), float(state[tok_ind] / 2.), 20))
+    sell_price = np.array(
+        [perform_action('swap_to_coin', state, v, rebalance=False, from_long=is_long)[2]
+         for v in sell_volume]
+    )
+
+    buy_volume = np.linspace(float(state[0] / 1000.), float(state[0] / 2.), 20)
+    buy_price = np.array(
+        [perform_action('swap_from_coin', state, v, rebalance=False, to_long=is_long)[2]
+         for v in buy_volume]
+    )
+
+    _ = plt.plot(
+        np.concatenate([sell_price, buy_price]),
+        np.concatenate([sell_volume, buy_volume / buy_price]),
+        **plot_args)
+
+
+def plot_action_orderbook(
+        s_0, a_c, n_c_min=5000, n_c_max=20000, action='swap_from_coin', coin_per_pair=100,
+        xlim=None, ylim=None, **swap_params):
+    n_c_0, n_l_0, n_s_0, w_c_0, w_l_0, w_s_0 = s_0
+    spot_l_0, spot_s_0 = get_amm_spot_prices(s_0)
+
+    s_1, tok_out, avg_price = perform_action(action, s_0, a_c, coin_per_pair=coin_per_pair, **swap_params)
+
+    n_c_1, n_l_1, n_s_1, w_c_1, w_l_1, w_s_1 = s_1
+    spot_l_1, spot_s_1 = get_amm_spot_prices(s_1)
+
+    # Plot initial state
+    _ = plt.subplot(1, 2, 1)
+    plot_orderbook(s_0, is_long=False, c='k', linestyle=':', alpha=0.2)
+    plot_orderbook(s_1, is_long=False, c='k', linestyle='-', alpha=0.5)
+    _ = plt.xlabel('Price')
+    _ = plt.ylabel('Volume')
+    _ = plt.title('Short')
+    _ = plt.legend(['Initial', 'Final'])
+    if xlim is not None:
+        _ = plt.xlim(xlim)
+    if ylim is not None:
+        _ = plt.ylim(ylim)
+
+    _ = plt.subplot(1, 2, 2)
+    plot_orderbook(s_0, is_long=True, c='k', linestyle=':', alpha=0.2)
+    plot_orderbook(s_1, is_long=True, c='k', linestyle='-', alpha=0.5)
+    _ = plt.xlabel('Price')
+    _ = plt.ylabel('Volume')
+    _ = plt.title('Long')
+    _ = plt.legend(['Initial', 'Final'])
+    if xlim is not None:
+        _ = plt.xlim(xlim)
+    if ylim is not None:
+        _ = plt.ylim(ylim)
+
+    #     _ = plt.title(
+    #         f'Tokens in: {a_c:0.2f}  Tokens out: {tok_out:0.2f}  Average Price: {avg_price:0.2f}\n'
+    #         + f'Old balance: {n_c_0:0.2f} Coin  {n_l_0:0.2f} Long  {n_s_0:0.2f}  Short\n'
+    #         + f'New balance: {n_c_1:0.2f} Coin  {n_l_1:0.2f} Long  {n_s_1:0.2f}  Short\n'
+    #         + f'Old spot prices: Long {spot_l_0:0.2f}  Short {spot_s_0:0.2f}\n'
+    #         + f'New spot prices: Long {spot_l_1:0.2f}  Short {spot_s_1:0.2f}\n'
+    #     )
+    #     _ = plt.xlabel('$n_c$')
+    #     _ = plt.ylabel('$n_l, n_s$')
+    #     _ = plt.legend()
+
+    return s_1, tok_out, avg_price
+
+
+def print_state_change(
+        action, s_0, a_c, s_1=None, tok_out=None, avg_price=None,
+        coin_per_pair=None, **action_params):
+    n_c_0, n_l_0, n_s_0, w_c_0, w_l_0, w_s_0 = s_0
+    spot_l_0, spot_s_0 = get_amm_spot_prices(s_0)
+
+    if s_1 is None:
+        s_1, tok_out, avg_price = perform_action(
+            action, s_0, a_c, coin_per_pair=coin_per_pair, **action_params)
+
+    n_c_1, n_l_1, n_s_1, w_c_1, w_l_1, w_s_1 = s_1
+    spot_l_1, spot_s_1 = get_amm_spot_prices(s_1)
+
+    print(
+        f'Action: {action}\n'
+        f'Tokens in: {a_c:0.2f}  Tokens out: {tok_out:0.2f}  Average Price: {avg_price:0.2f}\n'
+        + f'Old balance {get_amm_balance(s_0):0.2f}: {n_c_0:0.2f} Coin  {n_l_0:0.2f} Long  {n_s_0:0.2f}  Short\n'
+        + f'New balance {get_amm_balance(s_1):0.2f}: {n_c_1:0.2f} Coin  {n_l_1:0.2f} Long  {n_s_1:0.2f}  Short\n'
+        + f'Old spot prices: Long {spot_l_0:0.2f}  Short {spot_s_0:0.2f}\n'
+        + f'New spot prices: Long {spot_l_1:0.2f}  Short {spot_s_1:0.2f}\n')
+    return s_1, tok_out, avg_price
+
+
+def perform_action_sequence(initial_state, actions, reporter=None):
+    print(get_amm_spot_prices(initial_state) + ['initial'])
+    states = [initial_state]
+    tok_outs = [0]
+    avg_prices = [get_amm_spot_prices(initial_state)[0]]
+    for action in actions:
+        new_state, tok_out, avg_price = perform_action(
+            action[0],
+            states[-1],
+            action[1], **action[2]
+        )
+        if reporter is None:
+            print(get_amm_spot_prices(new_state) + action[:2])
+        else:
+            reporter(action[0], states[-1], action[1], new_state, tok_out, avg_price)
+        states.append(new_state)
+        tok_outs.append(tok_out)
+        avg_prices.append(avg_price)
+    return states, tok_outs, avg_prices
