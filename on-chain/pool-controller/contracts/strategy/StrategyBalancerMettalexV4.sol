@@ -518,21 +518,22 @@ contract StrategyBalancerMettalexV4 {
     function _calculateSpotPrice(uint256 typeOfRebalance, uint256 amountAdded)
         internal
         view
-        returns (uint256)
+        returns (uint256 spotPrice)
     {
-        IMettalexVault mVault = IMettalexVault(mettalexVault);
-        IBalancer bPool = IBalancer(balancer);
-
-        if (!bPool.isBound(want) || typeOfRebalance == ORACLE_REBALANCE) {
-            return mVault.priceSpot();
+        if (
+            !IBalancer(balancer).isBound(want) ||
+            typeOfRebalance == ORACLE_REBALANCE
+        ) {
+            spotPrice = IMettalexVault(mettalexVault).priceSpot();
+            return spotPrice;
         }
 
-        uint256 floor = mVault.priceFloor();
-        uint256 cap = mVault.priceCap();
+        uint256 floor = IMettalexVault(mettalexVault).priceFloor();
+        uint256 cap = IMettalexVault(mettalexVault).priceCap();
 
         //get spot price from balancer pool
-        uint256 priceShort = bPool.getSpotPrice(want, shortToken);
-        uint256 priceLong = bPool.getSpotPrice(want, longToken);
+        uint256 priceShort = IBalancer(balancer).getSpotPrice(want, shortToken);
+        uint256 priceLong = IBalancer(balancer).getSpotPrice(want, longToken);
 
         uint256 ammSpot = floor.add(
             (cap.sub(floor)).mul(priceLong).div(priceShort.add(priceLong))
@@ -551,17 +552,19 @@ contract StrategyBalancerMettalexV4 {
         }
 
         uint256 balanceOracle = IERC20(want).balanceOf(balancer) +
-            amount.mul(mVault.collateralPerUnit());
+            amount.mul(IMettalexVault(mettalexVault).collateralPerUnit());
 
         uint256 balanceTrade = balanceOracle.add(amountAdded); //want added
 
         //amm_wt and oracle_wt
-        uint256 ammWeight = balanceOracle.div(balanceTrade);
-        uint256 oracleWeight = amountAdded.div(balanceTrade);
+        uint256 ammWeight = balanceOracle.mul(1 ether).div(balanceTrade);
+        uint256 oracleWeight = amountAdded.mul(1 ether).div(balanceTrade);
 
         uint256 oracleSpot = IMettalexVault(mettalexVault).priceSpot();
 
-        uint256 spotPrice = ammSpot * ammWeight + oracleSpot * oracleWeight;
+        spotPrice = ((ammSpot.mul(ammWeight)).add(oracleSpot.mul(oracleWeight)))
+            .div(1 ether);
+
         return spotPrice;
     }
 
@@ -869,17 +872,22 @@ contract StrategyBalancerMettalexV4 {
             address(balancer)
         );
         uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
-        uint256 collateralPerUnit = IMettalexVault(mettalexVault)
-            .collateralPerUnit();
 
-        if (poolStkBalance >= poolLtkBalance) {
-            totalValuation = IERC20(want).balanceOf(address(balancer)).add(
-                poolLtkBalance.mul(collateralPerUnit)
-            );
-        } else {
-            totalValuation = IERC20(want).balanceOf(address(balancer)).add(
-                poolStkBalance.mul(collateralPerUnit)
-            );
+        totalValuation = IERC20(want).balanceOf(address(balancer));
+        IBalancer bpool = IBalancer(balancer);
+
+        //get short price values in want
+        if (poolStkBalance != 0) {
+            uint256 stkSpot = bpool.getSpotPriceSansFee(want, shortToken);
+            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e18);
+            totalValuation = totalValuation.add(totalValueInCoin);
+        }
+
+        //get long price values in want
+        if (poolLtkBalance != 0) {
+            uint256 ltkSpot = bpool.getSpotPriceSansFee(want, longToken);
+            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e18);
+            totalValuation = totalValuation.add(totalValueInCoin);
         }
         return totalValuation;
     }
