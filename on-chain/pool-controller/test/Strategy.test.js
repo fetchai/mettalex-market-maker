@@ -259,6 +259,39 @@ describe("Strategy", () => {
     expect(x[1]).to.be.bignumber.above('0')
   })
 
+  // trying swap functionality
+  it("checking swap functionality", async () => {
+    x = await this.strategy.getExpectedOutAmount(want,longToken,100*Math.pow(10,lDecimals),{from : user});
+    expect(x[0]).to.be.bignumber.above('0')
+    expect(x[1]).to.be.bignumber.above('0')
+
+    // fetching bpool long short balances
+    this.long.balanceOf(addresses.BPool).then((x)=>{console.log("long bpool balance",Number(x))})
+    this.short.balanceOf(addresses.BPool).then((x)=>{console.log("short bpool balance",Number(x))})
+    
+    // fetching user long and usdt balances
+    this.want.balanceOf(user).then((x)=>{console.log("usdt user balance",Number(x))})
+    this.long.balanceOf(user).then((x)=>{console.log("long user balance",Number(x))})
+
+    // checking expected out amount after swap
+    x = await this.strategy.getExpectedOutAmount(want,longToken,100*Math.pow(10,wDecimals),{from : user});
+    console.log("Amount to be received after swap : ",Number(x[0]))
+    
+    // approving usdt ot strategy contract
+    await this.want.approve(addresses.PoolController, 100*Math.pow(10,wDecimals), {from : user});
+    
+    // swapping usdt with long
+    x = await this.strategy.swapExactAmountIn(want,100*Math.pow(10,wDecimals),longToken,1*Math.pow(10,lDecimals),1000);
+    console.log("------>>",x)
+
+    // fetching balance of bpool long and short
+    this.long.balanceOf(addresses.BPool).then((x)=>{console.log("long bpool balance",Number(x))})
+    this.short.balanceOf(addresses.BPool).then((x)=>{console.log("short bpool balance",Number(x))})
+    
+    // fetching balance of long for user 
+    this.long.balanceOf(user).then((x)=>{console.log("long user balance",Number(x))})
+  })
+
   // implementing withdraw scenario 
   it("withdraw less than vault balance scenario", async () => {
 
