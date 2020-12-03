@@ -245,6 +245,20 @@ describe("Strategy", () => {
     expect(x[1]).to.be.bignumber.above('0')
   })
 
+  // should return a valid number > 0 for swap
+  it("checking expected out amount by using lower value", async () => {
+    x = await this.strategy.getExpectedOutAmount(want,longToken,100*Math.pow(10,lDecimals),{from : user});
+    expect(x[0]).to.be.bignumber.above('0')
+    expect(x[1]).to.be.bignumber.above('0')
+  })
+
+  // should return a valid number > 0 for swap
+  it("checking expected out amount by using higher value", async () => {
+    x = await this.strategy.getExpectedOutAmount(want,longToken,10000*Math.pow(10,lDecimals),{from : user});
+    expect(x[0]).to.be.bignumber.above('0')
+    expect(x[1]).to.be.bignumber.above('0')
+  })
+
   // implementing withdraw scenario 
   it("withdraw less than vault balance scenario", async () => {
 
