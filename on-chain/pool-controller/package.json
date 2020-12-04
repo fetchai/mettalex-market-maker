@@ -17,7 +17,7 @@
     "mocha": "^7.1.2"
   },
   "scripts": {
-    "test": "npx mocha --exit --recursive test --timeout 12000",
+    "test": "bash setup.sh && npx mocha --exit --recursive test --timeout 12000",
     "compile": "npx oz compile"
   },
   "keywords": [],
