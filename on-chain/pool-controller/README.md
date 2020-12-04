@@ -10,12 +10,10 @@ It contains a mix of stablecoins in addition to  L and S tokens. The liquidity c
 
 * Please setup .env (PORT=8586) before running tests for the port to run tests on
 
-> npm install
-
 > cd on-chain/pool-controller
 
-> ganache-cli --deterministic (run in a seperate terminal)
+> npm install
 
-> bash setup.sh
+> ganache-cli --deterministic (run in a seperate terminal)
 
 > npm run test
