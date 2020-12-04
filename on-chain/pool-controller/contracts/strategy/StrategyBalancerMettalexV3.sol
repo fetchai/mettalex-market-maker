@@ -456,9 +456,16 @@ contract StrategyBalancerMettalexV3 {
             swapFee
         );
 
+        if (tokensReturned == 0) return (tokensReturned, 0);
+
         uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
-        uint256 effectivePrice = ((fromTokenAmount * 10**18) / tokensReturned);
-        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
+
+        uint256 effectivePrice = (fromTokenAmount.mul(1 ether)).div(
+            tokensReturned
+        );
+        priceImpact = ((effectivePrice.sub(spotPrice)).mul(1 ether)).div(
+            spotPrice
+        );
     }
 
     /**
@@ -496,9 +503,15 @@ contract StrategyBalancerMettalexV3 {
             swapFee
         );
 
+        if (tokensReturned == 0) return (tokensReturned, 0);
+
         uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
-        uint256 effectivePrice = ((tokensReturned * 10**18) / toTokenAmount);
-        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
+        uint256 effectivePrice = (tokensReturned.mul(1 ether)).div(
+            toTokenAmount
+        );
+        priceImpact = ((effectivePrice.sub(spotPrice)).mul(1 ether)).div(
+            spotPrice
+        );
     }
 
     function _calculateSpotPrice() internal view returns (uint256 spotPrice) {
