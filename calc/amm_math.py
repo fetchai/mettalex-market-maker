@@ -415,7 +415,7 @@ def simulate_swaps_from_coin(x_c_0, x_l_0, x_s_0, v, C, from_coin=True, c_max=10
 
 def plot_action(
         s_0, a_c, n_c_min=5000., n_c_max=20000.,
-        action='swap_from_coin', coin_per_pair=100, **swap_params
+        action='swap_from_coin', coin_per_pair=100, normalize_y=False, **swap_params
 ):
     """Plot action performed on AMM as plot of token balances vs coin balance
     This is similar to an indifference curve plot in micro-economics
@@ -439,53 +439,79 @@ def plot_action(
 
     x = np.linspace(n_c_min, n_c_max, 100).reshape(-1, 1)
 
+    initial_balance = 0  # n_c_0 + min(n_l_0, n_s_0) * coin_per_pair
+    if normalize_y:
+        y_norm = (initial_balance - x)/coin_per_pair
+        n_s_0_n = n_s_0 - (initial_balance - n_c_0)/coin_per_pair
+        n_l_0_n = n_l_0 - (initial_balance - n_c_0)/coin_per_pair
+        n_s_1_n = n_s_1 - (initial_balance - n_c_1)/coin_per_pair
+        n_l_1_n = n_l_1 - (initial_balance - n_c_1)/coin_per_pair
+    else:
+        y_norm = np.zeros_like(x)
+        n_s_0_n = n_s_0
+        n_l_0_n = n_l_0
+        n_s_1_n = n_s_1
+        n_l_1_n = n_l_1
+
     # Plot initial state
     k_0 = calc_balancer_invariant(*s_0)
-    _ = plt.plot(x, calc_token_balance(x, n_s_0, w_c_0, w_s_0, k_0),
+    _ = plt.plot(x, calc_token_balance(x, n_s_0, w_c_0, w_s_0, k_0) - y_norm,
                  c='k', linestyle=':', alpha=0.2, label='Initial Invariant')
-    _ = plt.plot(x, calc_token_balance(x, n_l_0, w_c_0, w_l_0, k_0),
+    _ = plt.plot(x, calc_token_balance(x, n_l_0, w_c_0, w_l_0, k_0) - y_norm,
                  c='k', linestyle=':', alpha=0.2)
-    _ = plt.plot(n_c_0, n_l_0, markerfacecolor='k', marker='o', markeredgecolor='k', markersize=8, alpha=0.2)
-    _ = plt.plot(n_c_0, n_s_0, markerfacecolor='w', marker='o', markeredgecolor='k', markersize=8, alpha=0.2)
+    _ = plt.plot(n_c_0, n_l_0_n, markerfacecolor='k', marker='o', markeredgecolor='k', markersize=8, alpha=0.2)
+    _ = plt.plot(n_c_0, n_s_0_n, markerfacecolor='w', marker='o', markeredgecolor='k', markersize=8, alpha=0.2)
 
     # Plot state movement
     if action != 'mint_redeem':
         x_move = np.linspace(float(min(n_c_0, n_c_1)), float(max(n_c_0, n_c_1)), 100).reshape(-1, 1)
+        if normalize_y:
+            y_norm_move = (initial_balance - x_move) / coin_per_pair
+        else:
+            y_norm_move = np.zeros_like(x_move)
         if n_l_1 != n_l_0:
             # Long swap
-            _ = plt.plot(x_move, calc_token_balance(x_move, n_s_0, w_c_0, w_s_0, k_0),
+            _ = plt.plot(x_move, calc_token_balance(x_move, n_s_0, w_c_0, w_s_0, k_0) - y_norm_move,
                          c='k', linestyle='-', alpha=0.5, label='Swap')
-            _ = plt.plot([n_c_0, n_c_1], [n_s_0, n_s_1], c='k', alpha=0.5)
+            _ = plt.plot([n_c_0, n_c_1], [n_s_0_n, n_s_1_n], c='k', alpha=0.5)
         else:
             # Short swap
-            _ = plt.plot(x_move, calc_token_balance(x_move, n_l_0, w_c_0, w_l_0, k_0),
+            _ = plt.plot(x_move, calc_token_balance(x_move, n_l_0, w_c_0, w_l_0, k_0) - y_norm_move,
                          c='k', linestyle='-', alpha=0.5, label='Swap')
-            _ = plt.plot([n_c_0, n_c_1], [n_l_0, n_l_1], c='k', alpha=0.5)
+            _ = plt.plot([n_c_0, n_c_1], [n_l_0_n, n_l_1_n], c='k', alpha=0.5)
     else:
-        _ = plt.plot([n_c_0, n_c_1], [[n_l_0, n_s_0], [n_l_1, n_s_1]],
+        _ = plt.plot([n_c_0, n_c_1], [[n_l_0_n, n_s_0_n], [n_l_1_n, n_s_1_n]],
                      c='k', alpha=0.5, label='Mint/Redeem')
 
     # Plot invariant curves without rebalance of weights for final state
-    _ = plt.plot(x, calc_token_balance(x, n_s_1, w_c_0, w_s_0, k_0),
+    _ = plt.plot(x, calc_token_balance(x, n_s_1, w_c_0, w_s_0, k_0) - y_norm,
                  c='k', linestyle='--', alpha=0.2, label='Intermediate Invariant')
-    _ = plt.plot(x, calc_token_balance(x, n_l_1, w_c_0, w_l_0, k_0),
+    _ = plt.plot(x, calc_token_balance(x, n_l_1, w_c_0, w_l_0, k_0) - y_norm,
                  c='k', linestyle='--', alpha=0.2)
 
     # Plot final invariant after rebalance
     k_1 = calc_balancer_invariant(*s_1)
-    _ = plt.plot(x, calc_token_balance(x, n_s_1, w_c_1, w_s_1, k_1),
+    _ = plt.plot(x, calc_token_balance(x, n_s_1, w_c_1, w_s_1, k_1) - y_norm,
                  c='k', linestyle='-', alpha=0.2, label='Final Invariant')
-    _ = plt.plot(x, calc_token_balance(x, n_l_1, w_c_1, w_l_1, k_1),
+    _ = plt.plot(x, calc_token_balance(x, n_l_1, w_c_1, w_l_1, k_1) - y_norm,
                  c='k', linestyle='-', alpha=0.2)
 
     # Plot final state
-    ax_l = plt.plot(n_c_1, n_l_1, markerfacecolor='k', marker='o',
+    ax_l = plt.plot(n_c_1, n_l_1_n, markerfacecolor='k', marker='o',
                     markeredgecolor='k', markersize=12, alpha=0.5, label='Long', linestyle='none')
-    ax_s = plt.plot(n_c_1, n_s_1, markerfacecolor='w', marker='o',
+    ax_s = plt.plot(n_c_1, n_s_1_n, markerfacecolor='w', marker='o',
                     markeredgecolor='k', markersize=12, alpha=0.5, label='Short', linestyle='none')
 
+    if normalize_y:
+        _ = plt.plot(x, np.ones_like(x)*(n_c_0/coin_per_pair + min(n_l_0, n_s_0)),
+                     linestyle='-.', c='k', alpha=0.2, label='Initial Balance')
+    else:
+        _ = plt.plot(x, ((n_c_0 + min(n_l_0, n_s_0)*coin_per_pair) - x)/coin_per_pair,
+                     linestyle='-.', c='k', alpha=0.2, label='Initial Balance')
+
+    norm_str = ' (normalized)' if normalize_y else ''
     _ = plt.title(
-        f'Action: {action}\n'
+        f'Action: {action}{norm_str}\n'
         f'Tokens in: {a_c:0.2f}  Tokens out: {tok_out:0.2f}  Average Price: {avg_price:0.2f}\n'
         + f'Old balance: {n_c_0:0.2f} Coin  {n_l_0:0.2f} Long  {n_s_0:0.2f}  Short\n'
         + f'New balance: {n_c_1:0.2f} Coin  {n_l_1:0.2f} Long  {n_s_1:0.2f}  Short\n'
@@ -493,8 +519,12 @@ def plot_action(
         + f'New spot prices: Long {spot_l_1:0.2f}  Short {spot_s_1:0.2f}\n'
     )
     _ = plt.xlabel('$n_c$')
-    _ = plt.ylabel('$n_l, n_s$')
+    if normalize_y:
+        _ = plt.ylabel('$n_l, n_s$ (normalized)')
+    else:
+        _ = plt.ylabel('$n_l, n_s$')
     _ = plt.legend()
+
 
     return s_1, tok_out, avg_price
 
