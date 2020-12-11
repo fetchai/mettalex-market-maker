@@ -378,36 +378,6 @@ contract StrategyBalancerMettalexV3 {
         bPool.setController(_controller);
     }
 
-    /**
-     * @dev Used to get balance of strategy in terms of want
-     * @dev Gets pool value (LTK + STK + USDT (want)) in terms of USDT and
-     * adds the amount to this contract balance.
-     * @return The balance of strategy and bpool in terms of want
-     */
-    function maxWithdrawAmount() public view returns (uint256 withdrawAllowed) {
-        //from strategy
-        withdrawAllowed = IERC20(want).balanceOf(address(this));
-
-        //from balancer pool (want + min(ltk, stk)*collateralPerUnit)
-        uint256 poolStkBalance = IERC20(shortToken).balanceOf(
-            address(balancer)
-        );
-        uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
-
-        withdrawAllowed = withdrawAllowed.add(
-            IERC20(want).balanceOf(address(balancer))
-        );
-
-        uint256 collateralPerUnit = IMettalexVault(mettalexVault)
-            .collateralPerUnit();
-
-        uint256 pairs = poolStkBalance >= poolLtkBalance
-            ? poolLtkBalance
-            : poolStkBalance;
-
-        withdrawAllowed = withdrawAllowed.add(pairs.mul(collateralPerUnit));
-    }
-
     /********** BPool Methods for UI *********/
     /**
      * @dev Used to get balance of token in balancer pool connected with this strategy
@@ -572,7 +542,7 @@ contract StrategyBalancerMettalexV3 {
         IMettalexVault mVault = IMettalexVault(mettalexVault);
         PriceInfo memory price;
 
-        price.spot = spotPrice; //; mVault.priceSpot();
+        price.spot = spotPrice; //mVault.priceSpot();
         price.floor = mVault.priceFloor();
         price.cap = mVault.priceCap();
         price.range = price.cap.sub(price.floor);
@@ -832,47 +802,22 @@ contract StrategyBalancerMettalexV3 {
         uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
 
         totalValuation = IERC20(want).balanceOf(address(balancer));
+        IBalancer bpool = IBalancer(balancer);
 
-        uint256 collateralPerUnit = IMettalexVault(mettalexVault)
-            .collateralPerUnit();
-
-        uint256 pairs = poolStkBalance >= poolLtkBalance
-            ? poolLtkBalance
-            : poolStkBalance;
-
-        totalValuation = totalValuation.add(pairs.mul(collateralPerUnit));
-
-        if (poolStkBalance == poolLtkBalance) {
-            return totalValuation;
+        //get short price values in want
+        if (poolStkBalance != 0) {
+            uint256 stkSpot = bpool.getSpotPriceSansFee(want, shortToken);
+            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e18);
+            totalValuation = totalValuation.add(totalValueInCoin);
         }
 
-        uint256 spot;
-        //unpaired tokens
-        if (poolStkBalance > poolLtkBalance) {
-            // (uint256 UnpairedStk, ) = getExpectedOutAmount(
-            //     shortToken,
-            //     want,
-            //     poolStkBalance.sub(poolLtkBalance)
-            // );
-
-            spot = IBalancer(balancer).getSpotPriceSansFee(want, shortToken);
-            uint256 UnpairedStk = (poolStkBalance.sub(poolLtkBalance)).mul(
-                spot
-            );
-
-            totalValuation = totalValuation.add(UnpairedStk);
-        } else {
-            // (uint256 UnpairedLtk, ) = getExpectedOutAmount(
-            //     longToken,
-            //     want,
-            //     poolLtkBalance.sub(poolStkBalance)
-            // );
-            spot = IBalancer(balancer).getSpotPriceSansFee(want, shortToken);
-            uint256 UnpairedLtk = (poolLtkBalance.sub(poolStkBalance)).mul(
-                spot
-            );
-            totalValuation = totalValuation.add(UnpairedLtk);
+        //get long price values in want
+        if (poolLtkBalance != 0) {
+            uint256 ltkSpot = bpool.getSpotPriceSansFee(want, longToken);
+            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e18);
+            totalValuation = totalValuation.add(totalValueInCoin);
         }
+        return totalValuation;
     }
 
     function _depositInternal() private {
