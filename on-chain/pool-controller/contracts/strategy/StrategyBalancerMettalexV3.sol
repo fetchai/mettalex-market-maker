@@ -45,9 +45,6 @@ contract StrategyBalancerMettalexV3 {
         uint256 d;
     }
 
-    // Supply tracks the number of `want` that we have lent out of other distro's
-    uint256 public supply;
-
     address public want;
     address public balancer;
     address public mettalexVault;
@@ -92,7 +89,6 @@ contract StrategyBalancerMettalexV3 {
         governance = msg.sender;
         controller = _controller;
         breaker = false;
-        supply = 0;
     }
 
     /**
@@ -130,17 +126,7 @@ contract StrategyBalancerMettalexV3 {
         require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
 
-        uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
-            address(this)
-        );
-
         _depositInternal();
-
-        uint256 wantAfterMintandDeposit = IERC20(want).balanceOf(address(this));
-
-        supply = supply.add(
-            wantBeforeMintandDeposit.sub(wantAfterMintandDeposit)
-        );
     }
 
     /**
@@ -173,8 +159,6 @@ contract StrategyBalancerMettalexV3 {
 
             _depositInternal();
         }
-
-        supply = supply.sub(_amount);
     }
 
     /**
@@ -337,9 +321,9 @@ contract StrategyBalancerMettalexV3 {
      * adds the amount to this contract balance.
      * @return The balance of strategy and bpool in terms of want
      */
-    function balanceOf() external view returns (uint256) {
-        uint256 bpoolValuation = _getBalancerPoolValue();
-        return IERC20(want).balanceOf(address(this)).add(bpoolValuation);
+    function balanceOf() external view returns (uint256 total) {
+        total = _getBalancerPoolValue();
+        total = IERC20(want).balanceOf(address(this)).add(total);
     }
 
     /**
@@ -394,6 +378,36 @@ contract StrategyBalancerMettalexV3 {
         bPool.setController(_controller);
     }
 
+    /**
+     * @dev Used to get balance of strategy in terms of want
+     * @dev Gets pool value (LTK + STK + USDT (want)) in terms of USDT and
+     * adds the amount to this contract balance.
+     * @return The balance of strategy and bpool in terms of want
+     */
+    function maxWithdrawAmount() public view returns (uint256 withdrawAllowed) {
+        //from strategy
+        withdrawAllowed = IERC20(want).balanceOf(address(this));
+
+        //from balancer pool (want + min(ltk, stk)*collateralPerUnit)
+        uint256 poolStkBalance = IERC20(shortToken).balanceOf(
+            address(balancer)
+        );
+        uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
+
+        withdrawAllowed = withdrawAllowed.add(
+            IERC20(want).balanceOf(address(balancer))
+        );
+
+        uint256 collateralPerUnit = IMettalexVault(mettalexVault)
+            .collateralPerUnit();
+
+        uint256 pairs = poolStkBalance >= poolLtkBalance
+            ? poolLtkBalance
+            : poolStkBalance;
+
+        withdrawAllowed = withdrawAllowed.add(pairs.mul(collateralPerUnit));
+    }
+
     /********** BPool Methods for UI *********/
     /**
      * @dev Used to get balance of token in balancer pool connected with this strategy
@@ -417,7 +431,7 @@ contract StrategyBalancerMettalexV3 {
      * @param token address The address of token
      * @return If given token is bounded to balancer pool or not
      */
-    function isBound(address token) external view returns (bool) {
+    function isBound(address token) public view returns (bool) {
         return IBalancer(balancer).isBound(token);
     }
 
@@ -713,20 +727,8 @@ contract StrategyBalancerMettalexV3 {
     }
 
     function _withdrawAll() internal {
-        uint256 _before = IERC20(want).balanceOf(address(this));
-
         _unbind();
         _redeemPositions();
-
-        uint256 _after = IERC20(want).balanceOf(address(this));
-
-        uint256 _diff = _after.sub(_before);
-        if (_diff > supply) {
-            // Pool made too much profit, so we reset to 0 to avoid revert
-            supply = 0;
-        } else {
-            supply = supply.sub(_after.sub(_before));
-        }
     }
 
     function _swapFromCoin(
@@ -822,28 +824,55 @@ contract StrategyBalancerMettalexV3 {
         view
         returns (uint256 totalValuation)
     {
+        if (!isBound(want)) return 0;
+
         uint256 poolStkBalance = IERC20(shortToken).balanceOf(
             address(balancer)
         );
         uint256 poolLtkBalance = IERC20(longToken).balanceOf(address(balancer));
 
         totalValuation = IERC20(want).balanceOf(address(balancer));
-        IBalancer bpool = IBalancer(balancer);
 
-        //get short price values in want
-        if (poolStkBalance != 0) {
-            uint256 stkSpot = bpool.getSpotPriceSansFee(want, shortToken);
-            uint256 totalValueInCoin = (stkSpot.mul(poolStkBalance)).div(1e18);
-            totalValuation = totalValuation.add(totalValueInCoin);
+        uint256 collateralPerUnit = IMettalexVault(mettalexVault)
+            .collateralPerUnit();
+
+        uint256 pairs = poolStkBalance >= poolLtkBalance
+            ? poolLtkBalance
+            : poolStkBalance;
+
+        totalValuation = totalValuation.add(pairs.mul(collateralPerUnit));
+
+        if (poolStkBalance == poolLtkBalance) {
+            return totalValuation;
         }
 
-        //get long price values in want
-        if (poolLtkBalance != 0) {
-            uint256 ltkSpot = bpool.getSpotPriceSansFee(want, longToken);
-            uint256 totalValueInCoin = (ltkSpot.mul(poolLtkBalance)).div(1e18);
-            totalValuation = totalValuation.add(totalValueInCoin);
+        uint256 spot;
+        //unpaired tokens
+        if (poolStkBalance > poolLtkBalance) {
+            // (uint256 UnpairedStk, ) = getExpectedOutAmount(
+            //     shortToken,
+            //     want,
+            //     poolStkBalance.sub(poolLtkBalance)
+            // );
+
+            spot = IBalancer(balancer).getSpotPriceSansFee(want, shortToken);
+            uint256 UnpairedStk = (poolStkBalance.sub(poolLtkBalance)).mul(
+                spot
+            );
+
+            totalValuation = totalValuation.add(UnpairedStk);
+        } else {
+            // (uint256 UnpairedLtk, ) = getExpectedOutAmount(
+            //     longToken,
+            //     want,
+            //     poolLtkBalance.sub(poolStkBalance)
+            // );
+            spot = IBalancer(balancer).getSpotPriceSansFee(want, shortToken);
+            uint256 UnpairedLtk = (poolLtkBalance.sub(poolStkBalance)).mul(
+                spot
+            );
+            totalValuation = totalValuation.add(UnpairedLtk);
         }
-        return totalValuation;
     }
 
     function _depositInternal() private {
@@ -866,6 +895,14 @@ contract StrategyBalancerMettalexV3 {
         uint256 strategyWant = wantAfterMint;
         uint256 strategyLtk = IERC20(longToken).balanceOf(address(this));
         uint256 strategyStk = IERC20(shortToken).balanceOf(address(this));
+
+        //Bpool limitation for binding token
+        if (
+            balancerLtk.add(strategyLtk) < 10**6 ||
+            balancerStk.add(strategyStk) < 10**6
+        ) {
+            return;
+        }
 
         // Approve transfer to balancer pool
         IERC20(want).safeApprove(balancer, 0);
