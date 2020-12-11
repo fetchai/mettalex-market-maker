@@ -11,7 +11,7 @@ import "../lib/SafeMath.sol";
 import "../lib/SafeERC20.sol";
 
 /**
- * @title StrategyBalancerMettalexV3
+ * @title StrategyBalancerMettalexV4
  * @notice A strategy must implement the following calls:
  * 1. deposit()
  * 2. withdraw(address) - must exclude any tokens used in the yield - Controller role
@@ -25,7 +25,7 @@ import "../lib/SafeERC20.sol";
  * USDT + LTK + STK into balancer
  * (No yield farming, just Balancer pool fees)
  */
-contract StrategyBalancerMettalexV3 {
+contract StrategyBalancerMettalexV4 {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
@@ -44,6 +44,14 @@ contract StrategyBalancerMettalexV3 {
         uint256 ds;
         uint256 d;
     }
+
+    // Supply tracks the number of `want` that we have lent out of other distro's
+    uint256 public supply;
+
+    uint256 private constant ORACLE_REBALANCE = 1;
+    uint256 private constant DEPOSIT_REBALANCE = 2;
+    //includes swap and withdraw
+    uint256 private constant OTHER_REBALANCE = 3;
 
     address public want;
     address public balancer;
@@ -89,6 +97,7 @@ contract StrategyBalancerMettalexV3 {
         governance = msg.sender;
         controller = _controller;
         breaker = false;
+        supply = 0;
     }
 
     /**
@@ -126,7 +135,21 @@ contract StrategyBalancerMettalexV3 {
         require(msg.sender == controller, "!controller");
         require(breaker == false, "!breaker");
 
-        _depositInternal();
+        uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
+            address(this)
+        );
+
+        uint256 spotPrice = _calculateSpotPrice(
+            DEPOSIT_REBALANCE,
+            wantBeforeMintandDeposit
+        );
+        _depositInternal(spotPrice);
+
+        uint256 wantAfterMintandDeposit = IERC20(want).balanceOf(address(this));
+
+        supply = supply.add(
+            wantBeforeMintandDeposit.sub(wantAfterMintandDeposit)
+        );
     }
 
     /**
@@ -157,8 +180,11 @@ contract StrategyBalancerMettalexV3 {
                 _amount
             );
 
-            _depositInternal();
+            uint256 spotPrice = _calculateSpotPrice(OTHER_REBALANCE, 0);
+            _depositInternal(spotPrice);
         }
+
+        supply = supply.sub(_amount);
     }
 
     /**
@@ -267,8 +293,11 @@ contract StrategyBalancerMettalexV3 {
      * price updated in vault
      */
     function updateSpotAndNormalizeWeights() external notSettled {
-        uint256 spotPrice = IMettalexVault(mettalexVault).priceSpot();
-        _rebalance(spotPrice);
+        _unbind();
+        _redeemPositions();
+
+        uint256 spotPrice = _calculateSpotPrice(ORACLE_REBALANCE, 0);
+        _depositInternal(spotPrice);
     }
 
     /**
@@ -310,7 +339,8 @@ contract StrategyBalancerMettalexV3 {
         longToken = _ltk;
         shortToken = _stk;
 
-        _depositInternal();
+        uint256 spotPrice = _calculateSpotPrice(OTHER_REBALANCE, 0);
+        _depositInternal(spotPrice);
 
         isBreachHandled = false;
     }
@@ -321,9 +351,9 @@ contract StrategyBalancerMettalexV3 {
      * adds the amount to this contract balance.
      * @return The balance of strategy and bpool in terms of want
      */
-    function balanceOf() external view returns (uint256 total) {
-        total = _getBalancerPoolValue();
-        total = IERC20(want).balanceOf(address(this)).add(total);
+    function balanceOf() external view returns (uint256) {
+        uint256 bpoolValuation = _getBalancerPoolValue();
+        return IERC20(want).balanceOf(address(this)).add(bpoolValuation);
     }
 
     /**
@@ -401,7 +431,7 @@ contract StrategyBalancerMettalexV3 {
      * @param token address The address of token
      * @return If given token is bounded to balancer pool or not
      */
-    function isBound(address token) public view returns (bool) {
+    function isBound(address token) external view returns (bool) {
         return IBalancer(balancer).isBound(token);
     }
 
@@ -440,16 +470,9 @@ contract StrategyBalancerMettalexV3 {
             swapFee
         );
 
-        if (tokensReturned == 0) return (tokensReturned, 0);
-
         uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
-
-        uint256 effectivePrice = (fromTokenAmount.mul(1 ether)).div(
-            tokensReturned
-        );
-        priceImpact = ((effectivePrice.sub(spotPrice)).mul(1 ether)).div(
-            spotPrice
-        );
+        uint256 effectivePrice = ((fromTokenAmount * 10**18) / tokensReturned);
+        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
     }
 
     /**
@@ -487,36 +510,62 @@ contract StrategyBalancerMettalexV3 {
             swapFee
         );
 
-        if (tokensReturned == 0) return (tokensReturned, 0);
-
         uint256 spotPrice = bpool.getSpotPrice(fromToken, toToken);
-        uint256 effectivePrice = (tokensReturned.mul(1 ether)).div(
-            toTokenAmount
-        );
-        priceImpact = ((effectivePrice.sub(spotPrice)).mul(1 ether)).div(
-            spotPrice
-        );
+        uint256 effectivePrice = ((tokensReturned * 10**18) / toTokenAmount);
+        priceImpact = ((effectivePrice - spotPrice) * 10**18) / spotPrice;
     }
 
-    function _calculateSpotPrice() internal view returns (uint256 spotPrice) {
-        IMettalexVault mVault = IMettalexVault(mettalexVault);
-        uint256 floor = mVault.priceFloor();
-        uint256 cap = mVault.priceCap();
-
-        //get spot price from balancer pool
-        IBalancer bPool = IBalancer(balancer);
-
-        if (!bPool.isBound(want)) {
-            spotPrice = mVault.priceSpot();
+    function _calculateSpotPrice(uint256 typeOfRebalance, uint256 amountAdded)
+        internal
+        view
+        returns (uint256 spotPrice)
+    {
+        if (
+            !IBalancer(balancer).isBound(want) ||
+            typeOfRebalance == ORACLE_REBALANCE
+        ) {
+            spotPrice = IMettalexVault(mettalexVault).priceSpot();
             return spotPrice;
         }
 
-        uint256 priceShort = bPool.getSpotPrice(want, shortToken);
-        uint256 priceLong = bPool.getSpotPrice(want, longToken);
+        uint256 floor = IMettalexVault(mettalexVault).priceFloor();
+        uint256 cap = IMettalexVault(mettalexVault).priceCap();
 
-        spotPrice = floor.add(
+        //get spot price from balancer pool
+        uint256 priceShort = IBalancer(balancer).getSpotPrice(want, shortToken);
+        uint256 priceLong = IBalancer(balancer).getSpotPrice(want, longToken);
+
+        uint256 ammSpot = floor.add(
             (cap.sub(floor)).mul(priceLong).div(priceShort.add(priceLong))
         );
+
+        if (typeOfRebalance == OTHER_REBALANCE) return ammSpot;
+
+        //bO and bt
+        uint256 amount = IERC20(shortToken).balanceOf(balancer);
+
+        if (
+            IERC20(longToken).balanceOf(balancer) <=
+            IERC20(shortToken).balanceOf(balancer)
+        ) {
+            amount = IERC20(longToken).balanceOf(balancer);
+        }
+
+        uint256 balanceOracle = IERC20(want).balanceOf(balancer) +
+            amount.mul(IMettalexVault(mettalexVault).collateralPerUnit());
+
+        uint256 balanceTrade = balanceOracle.add(amountAdded); //want added
+
+        //amm_wt and oracle_wt
+        uint256 ammWeight = balanceOracle.mul(1 ether).div(balanceTrade);
+        uint256 oracleWeight = amountAdded.mul(1 ether).div(balanceTrade);
+
+        uint256 oracleSpot = IMettalexVault(mettalexVault).priceSpot();
+
+        spotPrice = ((ammSpot.mul(ammWeight)).add(oracleSpot.mul(oracleWeight)))
+            .div(1 ether);
+
+        return spotPrice;
     }
 
     function _redeemPositions() internal {
@@ -555,7 +604,7 @@ contract StrategyBalancerMettalexV3 {
         IMettalexVault mVault = IMettalexVault(mettalexVault);
         PriceInfo memory price;
 
-        price.spot = spotPrice; //mVault.priceSpot();
+        price.spot = spotPrice; //; mVault.priceSpot();
         price.floor = mVault.priceFloor();
         price.cap = mVault.priceCap();
         price.range = price.cap.sub(price.floor);
@@ -710,8 +759,20 @@ contract StrategyBalancerMettalexV3 {
     }
 
     function _withdrawAll() internal {
+        uint256 _before = IERC20(want).balanceOf(address(this));
+
         _unbind();
         _redeemPositions();
+
+        uint256 _after = IERC20(want).balanceOf(address(this));
+
+        uint256 _diff = _after.sub(_before);
+        if (_diff > supply) {
+            // Pool made too much profit, so we reset to 0 to avoid revert
+            supply = 0;
+        } else {
+            supply = supply.sub(_after.sub(_before));
+        }
     }
 
     function _swapFromCoin(
@@ -737,7 +798,7 @@ contract StrategyBalancerMettalexV3 {
         );
 
         //Rebalance Pool
-        uint256 newSpotPrice = _calculateSpotPrice();
+        uint256 newSpotPrice = _calculateSpotPrice(OTHER_REBALANCE, 0);
         _rebalance(newSpotPrice);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
@@ -764,7 +825,7 @@ contract StrategyBalancerMettalexV3 {
         );
 
         //Rebalance Pool
-        uint256 newSpotPrice = _calculateSpotPrice();
+        uint256 newSpotPrice = _calculateSpotPrice(OTHER_REBALANCE, 0);
         _rebalance(newSpotPrice);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
@@ -807,8 +868,6 @@ contract StrategyBalancerMettalexV3 {
         view
         returns (uint256 totalValuation)
     {
-        if (!isBound(want)) return 0;
-
         uint256 poolStkBalance = IERC20(shortToken).balanceOf(
             address(balancer)
         );
@@ -833,11 +892,18 @@ contract StrategyBalancerMettalexV3 {
         return totalValuation;
     }
 
-    function _depositInternal() private {
+    function _depositInternal(uint256 spotPrice) private {
         // Get coin token balance and allocate half to minting position tokens
         uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
             address(this)
         );
+
+        //check to prevent revert in case of earn and withdraw from pool
+        // balancer limitation for 10**12 tokens
+        if (wantBeforeMintandDeposit < 10**12) {
+            return;
+        }
+
         uint256 wantToVault = wantBeforeMintandDeposit.div(2);
 
         _mintPositions(wantToVault);
@@ -854,14 +920,6 @@ contract StrategyBalancerMettalexV3 {
         uint256 strategyLtk = IERC20(longToken).balanceOf(address(this));
         uint256 strategyStk = IERC20(shortToken).balanceOf(address(this));
 
-        //Bpool limitation for binding token
-        if (
-            balancerLtk.add(strategyLtk) < 10**6 ||
-            balancerStk.add(strategyStk) < 10**6
-        ) {
-            return;
-        }
-
         // Approve transfer to balancer pool
         IERC20(want).safeApprove(balancer, 0);
         IERC20(want).safeApprove(balancer, strategyWant);
@@ -876,8 +934,7 @@ contract StrategyBalancerMettalexV3 {
         bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
         bal[2] = strategyWant.add(balancerWant);
-        uint256 newSpotPrice = _calculateSpotPrice();
-        uint256[3] memory wt = _calcDenormWeights(bal, newSpotPrice);
+        uint256[3] memory wt = _calcDenormWeights(bal, spotPrice);
 
         IBalancer bPool = IBalancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
