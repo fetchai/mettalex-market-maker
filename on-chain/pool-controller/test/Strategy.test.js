@@ -160,7 +160,7 @@ describe("Strategy", () => {
     expect(s).to.be.bignumber.equal("0");
 
     // check total supply
-    expect(await this.strategy.supply()).to.be.bignumber.equal("0");
+    // expect(await this.strategy.supply()).to.be.bignumber.equal("0");
 
     // checking yVault address with contract address deployed
     expect(await this.yearn.address).to.be.equal(addresses.YVault);
@@ -195,9 +195,9 @@ describe("Strategy", () => {
     await this.yearn.earn({ from: user });
 
     // checking total supply
-    expect(await this.strategy.supply()).to.be.bignumber.equal(
-      new BN(finalDeposit)
-    );
+    // expect(await this.strategy.supply()).to.be.bignumber.equal(
+    //   new BN(finalDeposit)
+    // );
 
     // pool controller usdt balance
     expect(
@@ -340,7 +340,7 @@ describe("Strategy", () => {
   // implementing withdraw scenario
   it("withdraw less than vault balance scenario", async () => {
     // getting supply
-    supply = await this.strategy.supply();
+    // supply = await this.strategy.supply();
 
     // checking no. of shares with user
     expect(await this.yearn.balanceOf(user)).to.be.bignumber.equal(
@@ -424,7 +424,7 @@ describe("Strategy", () => {
   // implementing withdraw scenario
   it("full amount withdraw scenario after governance withthdraws all usdt", async () => {
     // getting new supply
-    supply = await this.strategy.supply();
+    // supply = await this.strategy.supply();
 
     // checking no. of shares with user
     expect((x = await this.yearn.balanceOf(user))).to.be.bignumber.equal(
