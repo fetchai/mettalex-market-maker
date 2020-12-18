@@ -5,7 +5,7 @@ import os
 import subprocess
 
 
-def get_contracts(w3, strategy_version=1):
+def get_contracts(w3):
     usdt_faucet_build_file = Path(
         __file__).parent / ".." / 'mettalex-faucet' / 'build' / 'contracts' / 'USDTFaucet.json'
     eth_distributor_build_file = Path(
@@ -44,15 +44,33 @@ def deploy(w3, contracts):
     return contract_addresses
 
 
+def deployUSDTFaucet(w3, contracts):
+    account = w3.eth.defaultAccount
+
+    if not os.path.isfile('args.json'):
+        print('No args file')
+        return
+
+    with open('args.json', 'r') as f:
+        args = json.load(f)
+
+    usdt_faucet = deploy_contract(
+        w3, contracts['USDTFaucet'], *args['USDTFaucet'])
+
+    print(f'USDT faucet deployed at address: {usdt_faucet.address}')
+
+    return usdt_faucet.address
+
+
 # setup
-w3, admin = connect('bsc-testnet', 'admin')
+w3, admin = connect('bsc-mainnet', 'admin')
 contracts = get_contracts(w3)
-deployed_contract_address = deploy(w3, contracts)
+deployed_contract_address = deployUSDTFaucet(w3, contracts)
 
 print(deployed_contract_address)
 
-#coin address on bsc-testnet
+# coin address on bsc-mainnet
 coin = connect_contract(
-    w3, contracts['Coin'], '0xa5Ebc90a713908872f137f7e468c2d887a8A2869')
+    w3, contracts['Coin'], '0x6e71C530bAdEB04b95C64a8ca61fe0b946A94525')
 
 set_token_whitelist(w3, coin, deployed_contract_address["USDTFaucet"], True)

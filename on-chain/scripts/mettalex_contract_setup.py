@@ -41,6 +41,20 @@ def connect(network, account='user'):
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
 
+    elif network == 'bsc-mainnet':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = ' https://bsc-dataseed.binance.org/'
+        os.environ['WEB3_CHAIN_ID'] = '56'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
     elif network == 'kovan':
         config = read_config()
         os.environ['WEB3_INFURA_PROJECT_ID'] = config['infura']['project_id']
@@ -942,7 +956,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--network', '-n', dest='network', default='local',
-        help='For connecting to local, kovan or bsc-testnet network'
+        help='For connecting to local, kovan, bsc-testnet or bsc-mainnet network'
     )
     parser.add_argument(
         '--strategy', '-v', dest='strategy', default=1,
@@ -950,7 +964,7 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-    assert args.network in {'local', 'kovan', 'bsc-testnet'}
+    assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet'}
     assert args.strategy in {'1', '2', '3', '4'}
 
     w3, admin = connect(args.network, 'admin')
