@@ -44,6 +44,9 @@ contract StrategyBalancerMettalexV3 {
         uint256 d;
     }
 
+    uint256 private constant APPROX_MULTIPLIER = 47;
+    uint256 private constant INITIAL_MULTIPLIER = 50;
+
     address public want;
     address public balancer;
     address public mettalexVault;
@@ -590,29 +593,33 @@ contract StrategyBalancerMettalexV3 {
         );
         price.d = price.dc.add(price.dl).add(price.ds);
 
-        //        new_wts = [
-        //            x_c/d,
-        //            v*C*x_l/d,
-        //            (1-v)*C*x_s/d
-        //        ]
-        //        new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
+        /*        new_wts = [
+                    x_c/d,
+                    v*C*x_l/d,
+                    (1-v)*C*x_s/d
+                ]
+                new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
+        */
         wt[0] = price.ds.mul(1 ether).div(price.d);
         wt[1] = price.dl.mul(1 ether).div(price.d);
         wt[2] = price.dc.mul(1 ether).div(price.d);
 
-        uint256 x = (price.range * 1) / 100;
+        // current price at +-1% of floor or cap
+        uint256 x = price.range.div(100);
 
+        //adjusting weights to avoid max and min weight errors in BPool
         if (
             price.floor.add(x) >= price.spot || price.cap.sub(x) <= price.spot
         ) {
-            wt[0] = wt[0].mul(47).add(1 ether);
-            wt[1] = wt[1].mul(47).add(1 ether);
-            wt[2] = wt[2].mul(47).add(1 ether);
+            wt[0] = wt[0].mul(APPROX_MULTIPLIER).add(1 ether);
+            wt[1] = wt[1].mul(APPROX_MULTIPLIER).add(1 ether);
+            wt[2] = wt[2].mul(APPROX_MULTIPLIER).add(1 ether);
         } else {
-            wt[0] = wt[0].mul(50);
-            wt[1] = wt[1].mul(50);
-            wt[2] = wt[2].mul(50);
+            wt[0] = wt[0].mul(INITIAL_MULTIPLIER);
+            wt[1] = wt[1].mul(INITIAL_MULTIPLIER);
+            wt[2] = wt[2].mul(INITIAL_MULTIPLIER);
         }
+
         return wt;
     }
 
@@ -652,62 +659,25 @@ contract StrategyBalancerMettalexV3 {
         uint256[3] memory balance,
         address[3] memory tokens
     ) internal {
-        int256 tempDelta;
-        uint256 temp;
-        address tempAddress;
-
         if (delta[0] > delta[1]) {
-            tempDelta = delta[0];
-            delta[0] = delta[1];
-            delta[1] = tempDelta;
-
-            temp = balance[0];
-            balance[0] = balance[1];
-            balance[1] = temp;
-
-            temp = wt[0];
-            wt[0] = wt[1];
-            wt[1] = temp;
-
-            tempAddress = tokens[0];
-            tokens[0] = tokens[1];
-            tokens[1] = tempAddress;
+            (delta[0], delta[1]) = (delta[1], delta[0]);
+            (balance[0], balance[1]) = (balance[1], balance[0]);
+            (wt[0], wt[1]) = (wt[1], wt[0]);
+            (tokens[0], tokens[1]) = (tokens[1], tokens[0]);
         }
 
         if (delta[1] > delta[2]) {
-            tempDelta = delta[1];
-            delta[1] = delta[2];
-            delta[2] = tempDelta;
-
-            temp = balance[1];
-            balance[1] = balance[2];
-            balance[2] = temp;
-
-            temp = wt[1];
-            wt[1] = wt[2];
-            wt[2] = temp;
-
-            tempAddress = tokens[1];
-            tokens[1] = tokens[2];
-            tokens[2] = tempAddress;
+            (delta[1], delta[2]) = (delta[2], delta[1]);
+            (balance[1], balance[2]) = (balance[2], balance[1]);
+            (wt[1], wt[2]) = (wt[2], wt[1]);
+            (tokens[1], tokens[2]) = (tokens[2], tokens[1]);
         }
 
         if (delta[0] > delta[1]) {
-            tempDelta = delta[0];
-            delta[0] = delta[1];
-            delta[1] = tempDelta;
-
-            temp = balance[0];
-            balance[0] = balance[1];
-            balance[1] = temp;
-
-            temp = wt[0];
-            wt[0] = wt[1];
-            wt[1] = temp;
-
-            tempAddress = tokens[0];
-            tokens[0] = tokens[1];
-            tokens[1] = tempAddress;
+            (delta[0], delta[1]) = (delta[1], delta[0]);
+            (balance[0], balance[1]) = (balance[1], balance[0]);
+            (wt[0], wt[1]) = (wt[1], wt[0]);
+            (tokens[0], tokens[1]) = (tokens[1], tokens[0]);
         }
 
         IBalancer bPool = IBalancer(balancer);
