@@ -94,9 +94,8 @@ contract StrategyBalancerMettalexV3 {
      * @dev Throws if breach already handled after commodity settled
      */
     modifier callOnce {
-        if (!isBreachHandled) {
-            _;
-        }
+        require(!isBreachHandled, "breach already handled");
+        _;
     }
 
     /**
@@ -123,7 +122,7 @@ contract StrategyBalancerMettalexV3 {
      */
     function deposit() external notSettled {
         require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
+        require(!breaker, "!breaker");
 
         _depositInternal();
     }
@@ -136,12 +135,12 @@ contract StrategyBalancerMettalexV3 {
     function withdraw(uint256 _amount) external {
         // check if breached: return
         require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
+        require(!breaker, "!breaker");
 
         IMettalexVault mVault = IMettalexVault(mettalexVault);
         if (mVault.isSettled()) {
             handleBreach();
-            IERC20(want).transfer(
+            IERC20(want).safeTransfer(
                 IYController(controller).vaults(want),
                 _amount
             );
@@ -151,7 +150,7 @@ contract StrategyBalancerMettalexV3 {
             _redeemPositions();
 
             // Transfer out required funds to yVault.
-            IERC20(want).transfer(
+            IERC20(want).safeTransfer(
                 IYController(controller).vaults(want),
                 _amount
             );
@@ -168,7 +167,7 @@ contract StrategyBalancerMettalexV3 {
      */
     function withdraw(address _token) external returns (uint256 balance) {
         require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
+        require(!breaker, "!breaker");
         require(address(_token) != want, "Want");
         require(address(_token) != longToken, "LTOK");
         require(address(_token) != shortToken, "STOK");
@@ -222,7 +221,11 @@ contract StrategyBalancerMettalexV3 {
         require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
 
         //get tokens
-        IERC20(tokenIn).transferFrom(msg.sender, address(this), tokenAmountIn);
+        IERC20(tokenIn).safeTransferFrom(
+            msg.sender,
+            address(this),
+            tokenAmountIn
+        );
 
         IBalancer bPool = IBalancer(balancer);
         bPool.setPublicSwap(true);
@@ -278,7 +281,7 @@ contract StrategyBalancerMettalexV3 {
      * but new position tokens and vault
      */
     function handleBreach() public settled callOnce {
-        require(breaker == false, "!breaker");
+        require(!breaker, "!breaker");
 
         isBreachHandled = true;
         // Unbind tokens from Balancer pool
@@ -332,6 +335,10 @@ contract StrategyBalancerMettalexV3 {
      */
     function setGovernance(address _governance) external {
         require(msg.sender == governance, "!governance");
+        require(
+            (_governance != address(0)) && (_governance != address(this)),
+            "invalid governance address"
+        );
         governance = _governance;
     }
 
@@ -342,6 +349,10 @@ contract StrategyBalancerMettalexV3 {
      */
     function setController(address _controller) external {
         require(msg.sender == governance, "!governance");
+        require(
+            (_controller != address(0)) && (_controller != address(this)),
+            "invalid controller address"
+        );
         controller = _controller;
     }
 
@@ -360,7 +371,7 @@ contract StrategyBalancerMettalexV3 {
      * @dev Can be called by governance only
      * @param _breaker bool The boolean value indicating contract is paused or not
      */
-    function setBreaker(bool _breaker) public {
+    function setBreaker(bool _breaker) external {
         require(msg.sender == governance, "!governance");
         breaker = _breaker;
     }
@@ -370,8 +381,12 @@ contract StrategyBalancerMettalexV3 {
      * @dev Can be called by governance only
      * @param _controller address The address of new controller
      */
-    function updatePoolController(address _controller) public {
+    function updatePoolController(address _controller) external {
         require(msg.sender == governance, "!governance");
+        require(
+            (_controller != address(0)) && (_controller != address(this)),
+            "invalid controller address"
+        );
 
         IBalancer bPool = IBalancer(balancer);
         bPool.setController(_controller);
@@ -417,7 +432,7 @@ contract StrategyBalancerMettalexV3 {
         address fromToken,
         address toToken,
         uint256 fromTokenAmount
-    ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
+    ) external view returns (uint256 tokensReturned, uint256 priceImpact) {
         IBalancer bpool = IBalancer(balancer);
 
         require(bpool.isBound(fromToken));
@@ -740,7 +755,7 @@ contract StrategyBalancerMettalexV3 {
         _rebalance(newSpotPrice);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
+        IERC20(tokenOut).safeTransfer(msg.sender, tokenAmountOut);
     }
 
     function _swapToCoin(
@@ -767,7 +782,7 @@ contract StrategyBalancerMettalexV3 {
         _rebalance(newSpotPrice);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(want).transfer(msg.sender, tokenAmountOut);
+        IERC20(want).safeTransfer(msg.sender, tokenAmountOut);
     }
 
     function _swapPositions(
@@ -796,7 +811,7 @@ contract StrategyBalancerMettalexV3 {
         );
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
+        IERC20(tokenOut).safeTransfer(msg.sender, tokenAmountOut);
     }
 
     // This function should return Total valuation of balancer pool.
@@ -884,7 +899,7 @@ contract StrategyBalancerMettalexV3 {
         bool isStkBound = bPool.isBound(shortToken);
         bool isLtkBound = bPool.isBound(longToken);
 
-        if (isStkBound != true && isLtkBound != true && isWantBound != true) {
+        if (!isStkBound && !isLtkBound && !isWantBound) {
             bPool.bind(shortToken, bal[0], wt[0]);
             bPool.bind(longToken, bal[1], wt[1]);
             bPool.bind(want, bal[2], wt[2]);
