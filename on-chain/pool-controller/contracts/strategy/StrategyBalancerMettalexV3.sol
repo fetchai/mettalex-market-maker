@@ -1,14 +1,13 @@
 pragma solidity ^0.5.16;
 
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/drafts/SignedSafeMath.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+
 import "../interfaces/IBalancer.sol";
-import "../interfaces/IERC20.sol";
 import "../interfaces/IMettalexVault.sol";
 import "../interfaces/IYController.sol";
-
-import "../lib/Address.sol";
-import "../lib/SignedSafeMath.sol";
-import "../lib/SafeMath.sol";
-import "../lib/SafeERC20.sol";
 
 /**
  * @title StrategyBalancerMettalexV3
@@ -44,6 +43,9 @@ contract StrategyBalancerMettalexV3 {
         uint256 ds;
         uint256 d;
     }
+
+    uint256 private constant APPROX_MULTIPLIER = 47;
+    uint256 private constant INITIAL_MULTIPLIER = 50;
 
     address public want;
     address public balancer;
@@ -95,9 +97,8 @@ contract StrategyBalancerMettalexV3 {
      * @dev Throws if breach already handled after commodity settled
      */
     modifier callOnce {
-        if (!isBreachHandled) {
-            _;
-        }
+        require(!isBreachHandled, "breach already handled");
+        _;
     }
 
     /**
@@ -124,7 +125,7 @@ contract StrategyBalancerMettalexV3 {
      */
     function deposit() external notSettled {
         require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
+        require(!breaker, "!breaker");
 
         _depositInternal();
     }
@@ -137,12 +138,12 @@ contract StrategyBalancerMettalexV3 {
     function withdraw(uint256 _amount) external {
         // check if breached: return
         require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
+        require(!breaker, "!breaker");
 
         IMettalexVault mVault = IMettalexVault(mettalexVault);
         if (mVault.isSettled()) {
             handleBreach();
-            IERC20(want).transfer(
+            IERC20(want).safeTransfer(
                 IYController(controller).vaults(want),
                 _amount
             );
@@ -152,7 +153,7 @@ contract StrategyBalancerMettalexV3 {
             _redeemPositions();
 
             // Transfer out required funds to yVault.
-            IERC20(want).transfer(
+            IERC20(want).safeTransfer(
                 IYController(controller).vaults(want),
                 _amount
             );
@@ -169,7 +170,7 @@ contract StrategyBalancerMettalexV3 {
      */
     function withdraw(address _token) external returns (uint256 balance) {
         require(msg.sender == controller, "!controller");
-        require(breaker == false, "!breaker");
+        require(!breaker, "!breaker");
         require(address(_token) != want, "Want");
         require(address(_token) != longToken, "LTOK");
         require(address(_token) != shortToken, "STOK");
@@ -223,7 +224,11 @@ contract StrategyBalancerMettalexV3 {
         require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
 
         //get tokens
-        IERC20(tokenIn).transferFrom(msg.sender, address(this), tokenAmountIn);
+        IERC20(tokenIn).safeTransferFrom(
+            msg.sender,
+            address(this),
+            tokenAmountIn
+        );
 
         IBalancer bPool = IBalancer(balancer);
         bPool.setPublicSwap(true);
@@ -279,7 +284,7 @@ contract StrategyBalancerMettalexV3 {
      * but new position tokens and vault
      */
     function handleBreach() public settled callOnce {
-        require(breaker == false, "!breaker");
+        require(!breaker, "!breaker");
 
         isBreachHandled = true;
         // Unbind tokens from Balancer pool
@@ -333,6 +338,10 @@ contract StrategyBalancerMettalexV3 {
      */
     function setGovernance(address _governance) external {
         require(msg.sender == governance, "!governance");
+        require(
+            (_governance != address(0)) && (_governance != address(this)),
+            "invalid governance address"
+        );
         governance = _governance;
     }
 
@@ -343,6 +352,10 @@ contract StrategyBalancerMettalexV3 {
      */
     function setController(address _controller) external {
         require(msg.sender == governance, "!governance");
+        require(
+            (_controller != address(0)) && (_controller != address(this)),
+            "invalid controller address"
+        );
         controller = _controller;
     }
 
@@ -361,7 +374,7 @@ contract StrategyBalancerMettalexV3 {
      * @dev Can be called by governance only
      * @param _breaker bool The boolean value indicating contract is paused or not
      */
-    function setBreaker(bool _breaker) public {
+    function setBreaker(bool _breaker) external {
         require(msg.sender == governance, "!governance");
         breaker = _breaker;
     }
@@ -371,8 +384,12 @@ contract StrategyBalancerMettalexV3 {
      * @dev Can be called by governance only
      * @param _controller address The address of new controller
      */
-    function updatePoolController(address _controller) public {
+    function updatePoolController(address _controller) external {
         require(msg.sender == governance, "!governance");
+        require(
+            (_controller != address(0)) && (_controller != address(this)),
+            "invalid controller address"
+        );
 
         IBalancer bPool = IBalancer(balancer);
         bPool.setController(_controller);
@@ -418,7 +435,7 @@ contract StrategyBalancerMettalexV3 {
         address fromToken,
         address toToken,
         uint256 fromTokenAmount
-    ) public view returns (uint256 tokensReturned, uint256 priceImpact) {
+    ) external view returns (uint256 tokensReturned, uint256 priceImpact) {
         IBalancer bpool = IBalancer(balancer);
 
         require(bpool.isBound(fromToken));
@@ -576,29 +593,33 @@ contract StrategyBalancerMettalexV3 {
         );
         price.d = price.dc.add(price.dl).add(price.ds);
 
-        //        new_wts = [
-        //            x_c/d,
-        //            v*C*x_l/d,
-        //            (1-v)*C*x_s/d
-        //        ]
-        //        new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
+        /*        new_wts = [
+                    x_c/d,
+                    v*C*x_l/d,
+                    (1-v)*C*x_s/d
+                ]
+                new_denorm_wts = [int(100 * tok_wt * 10**18 / 2) for tok_wt in new_wts]
+        */
         wt[0] = price.ds.mul(1 ether).div(price.d);
         wt[1] = price.dl.mul(1 ether).div(price.d);
         wt[2] = price.dc.mul(1 ether).div(price.d);
 
-        uint256 x = (price.range * 1) / 100;
+        // current price at +-1% of floor or cap
+        uint256 x = price.range.div(100);
 
+        //adjusting weights to avoid max and min weight errors in BPool
         if (
             price.floor.add(x) >= price.spot || price.cap.sub(x) <= price.spot
         ) {
-            wt[0] = wt[0].mul(47).add(1 ether);
-            wt[1] = wt[1].mul(47).add(1 ether);
-            wt[2] = wt[2].mul(47).add(1 ether);
+            wt[0] = wt[0].mul(APPROX_MULTIPLIER).add(1 ether);
+            wt[1] = wt[1].mul(APPROX_MULTIPLIER).add(1 ether);
+            wt[2] = wt[2].mul(APPROX_MULTIPLIER).add(1 ether);
         } else {
-            wt[0] = wt[0].mul(50);
-            wt[1] = wt[1].mul(50);
-            wt[2] = wt[2].mul(50);
+            wt[0] = wt[0].mul(INITIAL_MULTIPLIER);
+            wt[1] = wt[1].mul(INITIAL_MULTIPLIER);
+            wt[2] = wt[2].mul(INITIAL_MULTIPLIER);
         }
+
         return wt;
     }
 
@@ -638,62 +659,25 @@ contract StrategyBalancerMettalexV3 {
         uint256[3] memory balance,
         address[3] memory tokens
     ) internal {
-        int256 tempDelta;
-        uint256 temp;
-        address tempAddress;
-
         if (delta[0] > delta[1]) {
-            tempDelta = delta[0];
-            delta[0] = delta[1];
-            delta[1] = tempDelta;
-
-            temp = balance[0];
-            balance[0] = balance[1];
-            balance[1] = temp;
-
-            temp = wt[0];
-            wt[0] = wt[1];
-            wt[1] = temp;
-
-            tempAddress = tokens[0];
-            tokens[0] = tokens[1];
-            tokens[1] = tempAddress;
+            (delta[0], delta[1]) = (delta[1], delta[0]);
+            (balance[0], balance[1]) = (balance[1], balance[0]);
+            (wt[0], wt[1]) = (wt[1], wt[0]);
+            (tokens[0], tokens[1]) = (tokens[1], tokens[0]);
         }
 
         if (delta[1] > delta[2]) {
-            tempDelta = delta[1];
-            delta[1] = delta[2];
-            delta[2] = tempDelta;
-
-            temp = balance[1];
-            balance[1] = balance[2];
-            balance[2] = temp;
-
-            temp = wt[1];
-            wt[1] = wt[2];
-            wt[2] = temp;
-
-            tempAddress = tokens[1];
-            tokens[1] = tokens[2];
-            tokens[2] = tempAddress;
+            (delta[1], delta[2]) = (delta[2], delta[1]);
+            (balance[1], balance[2]) = (balance[2], balance[1]);
+            (wt[1], wt[2]) = (wt[2], wt[1]);
+            (tokens[1], tokens[2]) = (tokens[2], tokens[1]);
         }
 
         if (delta[0] > delta[1]) {
-            tempDelta = delta[0];
-            delta[0] = delta[1];
-            delta[1] = tempDelta;
-
-            temp = balance[0];
-            balance[0] = balance[1];
-            balance[1] = temp;
-
-            temp = wt[0];
-            wt[0] = wt[1];
-            wt[1] = temp;
-
-            tempAddress = tokens[0];
-            tokens[0] = tokens[1];
-            tokens[1] = tempAddress;
+            (delta[0], delta[1]) = (delta[1], delta[0]);
+            (balance[0], balance[1]) = (balance[1], balance[0]);
+            (wt[0], wt[1]) = (wt[1], wt[0]);
+            (tokens[0], tokens[1]) = (tokens[1], tokens[0]);
         }
 
         IBalancer bPool = IBalancer(balancer);
@@ -741,7 +725,7 @@ contract StrategyBalancerMettalexV3 {
         _rebalance(newSpotPrice);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
+        IERC20(tokenOut).safeTransfer(msg.sender, tokenAmountOut);
     }
 
     function _swapToCoin(
@@ -768,7 +752,7 @@ contract StrategyBalancerMettalexV3 {
         _rebalance(newSpotPrice);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(want).transfer(msg.sender, tokenAmountOut);
+        IERC20(want).safeTransfer(msg.sender, tokenAmountOut);
     }
 
     function _swapPositions(
@@ -797,7 +781,7 @@ contract StrategyBalancerMettalexV3 {
         );
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(tokenOut).transfer(msg.sender, tokenAmountOut);
+        IERC20(tokenOut).safeTransfer(msg.sender, tokenAmountOut);
     }
 
     // This function should return Total valuation of balancer pool.
@@ -885,7 +869,7 @@ contract StrategyBalancerMettalexV3 {
         bool isStkBound = bPool.isBound(shortToken);
         bool isLtkBound = bPool.isBound(longToken);
 
-        if (isStkBound != true && isLtkBound != true && isWantBound != true) {
+        if (!isStkBound && !isLtkBound && !isWantBound) {
             bPool.bind(shortToken, bal[0], wt[0]);
             bPool.bind(longToken, bal[1], wt[1]);
             bPool.bind(want, bal[2], wt[2]);
