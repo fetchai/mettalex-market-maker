@@ -23,3 +23,7 @@ Comparing with IERC20 interface there was a need for some methods to be added as
 2. burn(address _from, uint256 _value) external;.
 These mehods are added to the IToken interface which is imported in Vault's SafeERC20 library which thereafter utilizes the IToken over IERC20.
 This is the key reason for having a seperate library instead of importing direct openzeppelin's SafeERC20.
+
+# Test
+
+Please refer to ../mettalex-protocol for test cases on mettalex-vault
