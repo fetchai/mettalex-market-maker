@@ -4,6 +4,7 @@
   "main": "networks.js",
   "dependencies": {
     "@openzeppelin/cli": "^2.8.2",
+    "@openzeppelin/contracts": "^2.3.0",
     "@openzeppelin/contracts-ethereum-package": "^2.5.0",
     "@truffle/hdwallet-provider": "^1.1.0",
     "dotenv": "^8.2.0",

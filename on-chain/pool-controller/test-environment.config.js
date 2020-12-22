@@ -10,6 +10,7 @@ module.exports = {
     // Options passed directly to Ganache client
     fork: "http://127.0.0.1:8545",
     port: process.env.PORT,
+    mnemonic: "myth like bonus scare over problem client lizard pioneer submit female collect",
     unlocked_accounts: [
       "0x9561C133DD8580860B6b7E504bC5Aa500f0f06a7",
       "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
