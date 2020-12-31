@@ -840,27 +840,33 @@ contract StrategyBalancerMettalexV3 {
         );
         uint256 wantToVault = wantBeforeMintandDeposit.div(2);
 
-        _mintPositions(wantToVault);
-
-        uint256 wantAfterMint = IERC20(want).balanceOf(address(this));
+        uint256 positionsExpected = wantToVault.div(
+            IMettalexVault(mettalexVault).collateralPerUnit()
+        );
 
         // Get AMM Pool token balances
         uint256 balancerWant = IERC20(want).balanceOf(balancer);
         uint256 balancerLtk = IERC20(longToken).balanceOf(balancer);
         uint256 balancerStk = IERC20(shortToken).balanceOf(balancer);
 
-        // Get Strategy token balances
-        uint256 strategyWant = wantAfterMint;
+        // Get strategy balance
         uint256 strategyLtk = IERC20(longToken).balanceOf(address(this));
         uint256 strategyStk = IERC20(shortToken).balanceOf(address(this));
 
         //Bpool limitation for binding token
         if (
-            balancerLtk.add(strategyLtk) < 10**6 ||
-            balancerStk.add(strategyStk) < 10**6
+            balancerLtk.add(positionsExpected).add(strategyLtk) < 10**6 ||
+            balancerStk.add(positionsExpected).add(strategyStk) < 10**6
         ) {
             return;
         }
+
+        _mintPositions(wantToVault);
+
+        // Get Strategy token balances
+        uint256 strategyWant = IERC20(want).balanceOf(address(this));
+        strategyLtk = IERC20(longToken).balanceOf(address(this));
+        strategyStk = IERC20(shortToken).balanceOf(address(this));
 
         // Approve transfer to balancer pool
         IERC20(want).safeApprove(balancer, 0);
