@@ -327,8 +327,24 @@ contract StrategyBalancerMettalexV3 {
      * @return The balance of strategy and bpool in terms of want
      */
     function balanceOf() external view returns (uint256 total) {
-        total = _getBalancerPoolValue();
-        total = IERC20(want).balanceOf(address(this)).add(total);
+        //Balance of strategy
+        uint256 stkBalance = IERC20(shortToken).balanceOf(address(this));
+        uint256 ltkBalance = IERC20(longToken).balanceOf(address(this));
+        uint256 collateralPerUnit = IMettalexVault(mettalexVault)
+            .collateralPerUnit();
+
+        if (stkBalance >= ltkBalance) {
+            total = IERC20(want).balanceOf(address(this)).add(
+                ltkBalance.mul(collateralPerUnit)
+            );
+        } else {
+            total = IERC20(want).balanceOf(address(this)).add(
+                stkBalance.mul(collateralPerUnit)
+            );
+        }
+
+        //balance of BPool
+        total = _getBalancerPoolValue().add(total);
     }
 
     /**
