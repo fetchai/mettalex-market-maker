@@ -7,5 +7,6 @@
   "ETHDistributor": [
     "0x2407A3227aA2111Dd3563b7D24c231263da304d8",
     100000000000000000
-  ]
+  ],
+  "PoolController":[]
 }

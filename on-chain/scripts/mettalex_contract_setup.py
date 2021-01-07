@@ -260,9 +260,13 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
     y_controller = deploy_contract(w3, contracts['YController'], account)
     y_vault = deploy_contract(
         w3, contracts['YVault'], coin.address, y_controller.address)
-
-    strategy = deploy_contract(
-        w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address)
+    
+    if (len(args['PoolController'])):
+        strategy = deploy_contract(
+            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, args['PoolController'][0])
+    else:
+        strategy = deploy_contract(
+            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, coin.address)
 
     contract_addresses = {
         'BFactory': balancer_factory.address,
@@ -331,7 +335,7 @@ def get_network(w3):
     return network
 
 
-def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vault, ltk, stk):
+def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vault, ltk, stk, mtlx):
     # deploy new strategy
     new_strategy = deploy_contract(
         w3,
@@ -341,7 +345,8 @@ def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vaul
         balancer.address,
         vault.address,
         ltk.address,
-        stk.address
+        stk.address,
+        mtlx.address
     )
 
     # setStrategy
