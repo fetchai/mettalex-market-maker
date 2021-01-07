@@ -328,20 +328,18 @@ contract StrategyBalancerMettalexV3 {
      */
     function balanceOf() external view returns (uint256 total) {
         //Balance of strategy
-        uint256 stkBalance = IERC20(shortToken).balanceOf(address(this));
-        uint256 ltkBalance = IERC20(longToken).balanceOf(address(this));
-        uint256 collateralPerUnit = IMettalexVault(mettalexVault)
-            .collateralPerUnit();
+        (uint256 stkPrice, uint256 ltkPrice) = _getSpotPrice();
 
-        if (stkBalance >= ltkBalance) {
-            total = IERC20(want).balanceOf(address(this)).add(
-                ltkBalance.mul(collateralPerUnit)
-            );
-        } else {
-            total = IERC20(want).balanceOf(address(this)).add(
-                stkBalance.mul(collateralPerUnit)
-            );
-        }
+        uint256 stkBalance = IERC20(shortToken).balanceOf(address(this)).mul(
+            stkPrice
+        );
+        uint256 ltkBalance = IERC20(longToken).balanceOf(address(this)).mul(
+            ltkPrice
+        );
+
+        total = IERC20(want).balanceOf(address(this)).add(stkBalance).add(
+            ltkBalance
+        );
 
         //balance of BPool
         total = _getBalancerPoolValue().add(total);
@@ -550,6 +548,37 @@ contract StrategyBalancerMettalexV3 {
         spotPrice = floor.add(
             (cap.sub(floor)).mul(priceLong).div(priceShort.add(priceLong))
         );
+    }
+
+    /**
+     * @dev Used to get spot price of positions
+     * @dev If Bpool is not active then prices will be:
+     * long price: CPU*(spot-floor)/(cap-floor)
+     * short price: CPU*(cap-spot)/(cap-floor)
+     * @return price of long and short tokens in terms of want
+     */
+    function _getSpotPrice()
+        internal
+        view
+        returns (uint256 shortPrice, uint256 longPrice)
+    {
+        if (isBound(want)) {
+            shortPrice = IBalancer(balancer).getSpotPrice(want, shortToken);
+            longPrice = IBalancer(balancer).getSpotPrice(want, longToken);
+        } else {
+            uint256 collateralPerUnit = IMettalexVault(mettalexVault)
+                .collateralPerUnit();
+            uint256 cap = IMettalexVault(mettalexVault).priceCap();
+            uint256 floor = IMettalexVault(mettalexVault).priceFloor();
+            uint256 spot = IMettalexVault(mettalexVault).priceSpot();
+
+            shortPrice = collateralPerUnit.mul(
+                (spot.sub(floor)).div(cap.sub(floor))
+            );
+            longPrice = collateralPerUnit.mul(
+                (cap.sub(spot)).div(cap.sub(floor))
+            );
+        }
     }
 
     function _redeemPositions() internal {
