@@ -46,6 +46,7 @@ contract StrategyBalancerMettalexV3 {
 
     uint256 private constant APPROX_MULTIPLIER = 47;
     uint256 private constant INITIAL_MULTIPLIER = 50;
+    uint256 public minMtlxBalance;
 
     address public want;
     address public balancer;
@@ -53,6 +54,7 @@ contract StrategyBalancerMettalexV3 {
     address public longToken;
     address public shortToken;
     address public governance;
+    address public mtlxToken;
     address public controller;
 
     bool public isBreachHandled;
@@ -81,13 +83,15 @@ contract StrategyBalancerMettalexV3 {
         address _balancer,
         address _mettalexVault,
         address _longToken,
-        address _shortToken
+        address _shortToken,
+        address _mtlxToken        
     ) public {
         want = _want;
         balancer = _balancer;
         mettalexVault = _mettalexVault;
         longToken = _longToken;
         shortToken = _shortToken;
+        mtlxToken = _mtlxToken;
         governance = msg.sender;
         controller = _controller;
         breaker = false;
@@ -116,6 +120,14 @@ contract StrategyBalancerMettalexV3 {
     modifier settled {
         IMettalexVault mVault = IMettalexVault(mettalexVault);
         require(mVault.isSettled(), "mVault should be settled");
+        _;
+    }
+
+    /**
+     * @dev Throws if MTLX balance is less than minMtlxBalance
+     */
+    modifier hasMTLX {
+        require(IERC20(mtlxToken).balanceOf(msg.sender) >= minMtlxBalance, "ERR_MIN_MTLX_BALANCE");
         _;
     }
 
@@ -220,7 +232,7 @@ contract StrategyBalancerMettalexV3 {
         address tokenOut,
         uint256 minAmountOut,
         uint256 maxPrice
-    ) external returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
+    ) external hasMTLX returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
         require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
 
         //get tokens
@@ -357,6 +369,27 @@ contract StrategyBalancerMettalexV3 {
             "invalid governance address"
         );
         governance = _governance;
+    }
+
+    /**
+     * @dev Used to update min required MTLX balance
+     * @dev Can be called by governance only
+     * @param balance The new minMtlxBalance required
+     */
+    function setMinMtlxBalance(uint256 balance) external {
+        require(msg.sender == governance, "!governance");
+        minMtlxBalance = balance;
+    }
+
+    /**
+     * @dev Used to update MTLX address
+     * @dev Can be called by governance only
+     * @param _mtlxToken address The address of new MTLX token
+     */
+    function setMtlxTokenAddress(address _mtlxToken) external {
+        require(msg.sender == governance, "!governance");
+        require((_mtlxToken != address(0)),"invalid token address");
+        mtlxToken = _mtlxToken;
     }
 
     /**
