@@ -1,13 +1,13 @@
 pragma solidity ^0.5.16;
 
-import "./interfaces/IBalancer.sol";
-import "./interfaces/IERC20.sol";
-import "./interfaces/IMettalexVault.sol";
-import "./interfaces/IYController.sol";
-import "./lib/Address.sol";
-import "./lib/SignedSafeMath.sol";
-import "./lib/SafeMath.sol";
-import "./lib/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/drafts/SignedSafeMath.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+
+import "../interfaces/IBalancer.sol";
+import "../interfaces/IMettalexVault.sol";
+import "../interfaces/IYController.sol";
 
 /*
 
@@ -31,7 +31,7 @@ import "./lib/SafeERC20.sol";
 
 */
 
-contract StrategyBalancerMettalex {
+contract StrategyBalancerMettalexV1 {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
@@ -404,7 +404,10 @@ contract StrategyBalancerMettalex {
         IMettalexVault mVault = IMettalexVault(mettalex_vault);
         if (mVault.isSettled()) {
             handleBreach();
-            IERC20(want).transfer(IYController(controller).vaults(want), _amount);
+            IERC20(want).transfer(
+                IYController(controller).vaults(want),
+                _amount
+            );
         } else {
             IBalancer bPool = IBalancer(balancer);
 
@@ -416,7 +419,10 @@ contract StrategyBalancerMettalex {
             _redeemPositions();
 
             // Transfer out required funds to yVault.
-            IERC20(want).transfer(IYController(controller).vaults(want), _amount);
+            IERC20(want).transfer(
+                IYController(controller).vaults(want),
+                _amount
+            );
 
             _depositInternal();
 
