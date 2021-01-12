@@ -654,12 +654,8 @@ contract StrategyBalancerMettalexV3 {
         price.floor = mVault.priceFloor();
         price.cap = mVault.priceCap();
         price.range = price.cap.sub(price.floor);
-
-        //   v = (price - floor)/priceRange
-        // 1-v = (cap - price)/priceRange
         price.C = mVault.collateralPerUnit();
 
-        // d =  x_c + C*v*x_l + C*x_s*(1 - v)
         // Try to 'avoid CompilerError: Stack too deep, try removing local variables.'
         // by using single variable to store [x_s, x_l, x_c]
         
@@ -670,20 +666,17 @@ contract StrategyBalancerMettalexV3 {
         //(price.cap.sub(price.spot)).div(price.range) = 1-v
         //bal[1] = x_l
         //bal[2] = x_c   
-        uint256 x_s = bal[0];
-        uint256 x_l = bal[1];
-        uint256 x_c = bal[2];
         //-------------------------------------------
 
         //-x_c*(v*(x_l - x_s) - x_l)
-        price.dc = (x_c.mul((price.spot.sub(price.floor))).mul(x_s).div(price.range));
-        price.dc = price.dc.add(x_c.mul(x_l)).sub(x_c.mul((price.spot.sub(price.floor))).mul(x_l).div(price.range));
- 
+        price.dc = (bal[2].mul((price.spot.sub(price.floor))).mul(bal[0]).div(price.range));
+        price.dc = price.dc.add(bal[2].mul(bal[1])).sub(bal[2].mul((price.spot.sub(price.floor))).mul(bal[1]).div(price.range));
+
         //C*v*x_l*x_s
-        price.dl = (price.C).mul(x_l).mul(x_s).mul((price.spot.sub(price.floor))).div(price.range);
+        price.dl = (price.C).mul(bal[1]).mul(bal[0]).mul((price.spot.sub(price.floor))).div(price.range);
         
         //C*x_l*x_s*(1-v)
-        price.ds = price.C.mul(x_l).mul(x_s).mul((price.cap.sub(price.spot))).div(price.range);
+        price.ds = price.C.mul(bal[1]).mul(bal[0]).mul((price.cap.sub(price.spot))).div(price.range);
         
         //C*x_l*x_s + x_c*((v*x_s) + (1-v)*x_l)
         price.d = price.dc.add(price.dl).add(price.ds);
