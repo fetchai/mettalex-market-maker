@@ -69,8 +69,8 @@ def calc_in_given_out(bO, wO, bI, wI, aO, sF=0):
     return bI*((bO/(bO - aO))**(wO/wI) - 1)/(1-sF)
 
 
-def set_amm_state(x_c, x_l, x_s, v, C, sF=0):
-    """For fixed token balances calculate the weights needed to achieve
+def set_amm_state_orig(x_c, x_l, x_s, v, C, sF=0):
+    """For fixed token balances calculate the weights needed to achieve a current token balances
     L price = v*C, S price = (1-v)*C where C is the coin needed to mint 1 L + 1 S
     """
 
@@ -86,30 +86,23 @@ def set_amm_state(x_c, x_l, x_s, v, C, sF=0):
     return [x_c, x_l, x_s, sol[w_c], sol[w_l], sol[w_s]]
 
 
-def set_amm_state_rebalance(C, sF=0):
-    # WIP: set price sum to C using mint/redeem operations
+def set_amm_state(x_c, x_l, x_s, v, C, sF=0):
+    """For fixed token balances calculate the weights needed to achieve at zero imbalance
+    L price = v*C, S price = (1-v)*C where C is the coin needed to mint 1 L + 1 S
+    """
 
     # Weights
-    w_c, w_l, w_s = sp.symbols('w_c w_l w_s', positive=True)
-    # Balances
-    x_c, x_l, x_s = sp.symbols('x_c x_l x_s', positive=True)
-    # Change in coin due to mint or redeem
-    d_c = sp.symbols('{\Delta}x_c')
-    # Constraints
+    if x_l == 0 or x_s == 0:
+        w_c = 1
+        w_l = 0
+        w_s = 0
+    else:
+        denom = C*x_l*x_s - x_c*(v*(x_l - x_s) - x_l)
+        w_c = x_c*(v*(x_l - x_s) - x_l)/denom
+        w_l = v*C*x_l*x_s/denom
+        w_s = (1 - v)*C*x_l*x_s/denom
 
-    # Constraint 1: Weights sum to 1
-    wt_sum = sp.Equality(w_c + w_l + w_s, 1)
-    # Constraint 2: Sum of position token spot prices is collateral backing them
-    price_sum = sp.Equality(
-        calc_spot_price(x_c, w_c, x_l, w_l, sF) +
-        calc_spot_price(x_c, w_c, x_s, w_s, sF),
-        C
-    )
-    # Constraint 3: Mint of redeem position tokens in pairs
-    mint_sum = x_c - d_c + x_l + d_c/C + x_s + d_c/C
-
-    # Rebalance
-    pass
+    return [x_c, x_l, x_s, w_c, w_l, w_s]
 
 
 def get_amm_spot_prices(state, sF=0):
