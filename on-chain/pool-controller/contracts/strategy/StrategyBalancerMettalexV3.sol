@@ -283,9 +283,8 @@ contract StrategyBalancerMettalexV3 {
      * @dev Used to rebalance the Balancer pool according to new spot
      * price updated in vault
      */
-    function updateSpotAndNormalizeWeights() external notSettled {
-        uint256 spotPrice = IMettalexVault(mettalexVault).priceSpot();
-        _rebalance(spotPrice);
+    function updateSpotAndNormalizeWeights() public notSettled {
+        _rebalance(IMettalexVault(mettalexVault).priceSpot());
     }
 
     /**
@@ -802,8 +801,7 @@ contract StrategyBalancerMettalexV3 {
         );
 
         //Rebalance Pool
-        uint256 newSpotPrice = _calculateSpotPrice();
-        _rebalance(newSpotPrice);
+        updateSpotAndNormalizeWeights();
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
         IERC20(tokenOut).safeTransfer(msg.sender, tokenAmountOut);
@@ -829,8 +827,7 @@ contract StrategyBalancerMettalexV3 {
         );
 
         //Rebalance Pool
-        uint256 newSpotPrice = _calculateSpotPrice();
-        _rebalance(newSpotPrice);
+        updateSpotAndNormalizeWeights();
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
         IERC20(want).safeTransfer(msg.sender, tokenAmountOut);
@@ -947,8 +944,7 @@ contract StrategyBalancerMettalexV3 {
         bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
         bal[2] = strategyWant.add(balancerWant);
-        uint256 newSpotPrice = _calculateSpotPrice();
-        uint256[3] memory wt = _calcDenormWeights(bal, newSpotPrice);
+        uint256[3] memory wt = _calcDenormWeights(bal, IMettalexVault(mettalexVault).priceSpot());
 
         IBalancer bPool = IBalancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
