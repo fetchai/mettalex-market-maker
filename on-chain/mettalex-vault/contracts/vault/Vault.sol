@@ -27,6 +27,7 @@ contract Vault is Ownable {
     address public longPositionToken;
     address public shortPositionToken;
     address public oracle;
+    uint256 public settleFee = 0;
     //Automated market maker pool controller
     address public ammPoolController;
 
@@ -210,6 +211,15 @@ contract Vault is Ownable {
         );   
         emit OracleUpdated(oracle, _newOracle);
         oracle = _newOracle;
+    }
+
+    /**
+     * @dev Changes the settle fee
+     * @param newSettleFee new settleFee
+     */
+    function updateSettleFee(uint256 newSettleFee) external onlyOwner{
+        require(newSettleFee <= (10**3), "ERR_MAX_SETTLE_FEE");
+        settleFee = newSettleFee;
     }
 
     /**
@@ -422,12 +432,15 @@ contract Vault is Ownable {
     {
         uint256 longBalance = _long.balanceOf(_settler);
         uint256 shortBalance = _short.balanceOf(_settler);
-
+        uint256 fee = 1000.sub(settleFee);
+        if (msg.sender == ammPoolController) {
+         fee = 1000;
+        }
         uint256 collateralReturned;
         if (settlementPrice < priceFloor) {
-            collateralReturned = collateralPerUnit.mul(shortBalance);
+            collateralReturned = collateralPerUnit.mul(shortBalance.mul(fee).div(1000));
         } else if (settlementPrice > priceCap) {
-            collateralReturned = collateralPerUnit.mul(longBalance);
+            collateralReturned = collateralPerUnit.mul(longBalance.mul(fee).div(1000));
         }
 
         _long.burn(_settler, longBalance);
@@ -436,4 +449,4 @@ contract Vault is Ownable {
 
         return (longBalance, shortBalance, collateralReturned);
     }
-}
+}   
