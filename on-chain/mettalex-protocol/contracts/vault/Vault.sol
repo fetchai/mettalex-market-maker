@@ -432,15 +432,15 @@ contract Vault is Ownable {
     {
         uint256 longBalance = _long.balanceOf(_settler);
         uint256 shortBalance = _short.balanceOf(_settler);
-        uint256 fee = 1000.sub(settleFee);
+        uint256 fractionReturned = 1000.sub(settleFee);
         if (msg.sender == ammPoolController) {
-         fee = 1000;
+         fractionReturned = 1000;
         }
         uint256 collateralReturned;
         if (settlementPrice < priceFloor) {
-            collateralReturned = collateralPerUnit.mul(shortBalance.mul(fee).div(1000));
+            collateralReturned = collateralPerUnit.mul(shortBalance.mul(fractionReturned).div(1000));
         } else if (settlementPrice > priceCap) {
-            collateralReturned = collateralPerUnit.mul(longBalance.mul(fee).div(1000));
+            collateralReturned = collateralPerUnit.mul(longBalance.mul(fractionReturned).div(1000));
         }
 
         _long.burn(_settler, longBalance);
@@ -449,4 +449,4 @@ contract Vault is Ownable {
 
         return (longBalance, shortBalance, collateralReturned);
     }
-}
+}   
