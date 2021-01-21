@@ -27,6 +27,7 @@ contract Vault is Ownable {
     address public longPositionToken;
     address public shortPositionToken;
     address public oracle;
+    uint256 public settleFee = 0;
     //Automated market maker pool controller
     address public ammPoolController;
 
@@ -210,6 +211,15 @@ contract Vault is Ownable {
         );   
         emit OracleUpdated(oracle, _newOracle);
         oracle = _newOracle;
+    }
+
+    /**
+     * @dev Changes the settle fee
+     * @param newSettleFee new settleFee
+     */
+    function updateSettleFee(uint256 newSettleFee) external onlyOwner{
+        require(newSettleFee <= (10**3), "ERR_MAX_SETTLE_FEE");
+        settleFee = newSettleFee;
     }
 
     /**
@@ -422,18 +432,26 @@ contract Vault is Ownable {
     {
         uint256 longBalance = _long.balanceOf(_settler);
         uint256 shortBalance = _short.balanceOf(_settler);
-
+        uint256 fractionReturned = 1000;
+        if (msg.sender != ammPoolController) {
+            fractionReturned = fractionReturned.sub(settleFee);
+        }
         uint256 collateralReturned;
+        uint256 collateralAmount;
         if (settlementPrice < priceFloor) {
-            collateralReturned = collateralPerUnit.mul(shortBalance);
+            collateralAmount = collateralPerUnit.mul(shortBalance);
+            collateralReturned = collateralPerUnit.mul(shortBalance.mul(fractionReturned).div(1000));
         } else if (settlementPrice > priceCap) {
-            collateralReturned = collateralPerUnit.mul(longBalance);
+            collateralAmount = collateralPerUnit.mul(longBalance);
+            collateralReturned = collateralPerUnit.mul(longBalance.mul(fractionReturned).div(1000));
         }
 
         _long.burn(_settler, longBalance);
         _short.burn(_settler, shortBalance);
         _collateral.safeTransfer(_settler, collateralReturned);
 
+        feeAccumulated = feeAccumulated.add(collateralAmount.sub(collateralReturned));
+
         return (longBalance, shortBalance, collateralReturned);
     }
-}
+}   
