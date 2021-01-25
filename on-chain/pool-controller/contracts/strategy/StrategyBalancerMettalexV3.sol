@@ -85,7 +85,7 @@ contract StrategyBalancerMettalexV3 {
         address _mettalexVault,
         address _longToken,
         address _shortToken,
-        address _mtlxToken        
+        address _mtlxToken
     ) public {
         want = _want;
         balancer = _balancer;
@@ -128,7 +128,10 @@ contract StrategyBalancerMettalexV3 {
      * @dev Throws if MTLX balance is less than minMtlxBalance
      */
     modifier hasMTLX {
-        require(IERC20(mtlxToken).balanceOf(msg.sender) >= minMtlxBalance, "ERR_MIN_MTLX_BALANCE");
+        require(
+            IERC20(mtlxToken).balanceOf(msg.sender) >= minMtlxBalance,
+            "ERR_MIN_MTLX_BALANCE"
+        );
         _;
     }
 
@@ -212,8 +215,9 @@ contract StrategyBalancerMettalexV3 {
         require(_vault != address(0), "!vault");
         IERC20(want).safeTransfer(_vault, balance);
 
-        IERC20(longToken).safeTransfer(newStrategy, ltkDust);
-        IERC20(shortToken).safeTransfer(newStrategy, stkDust);
+        require(newStrategy != address(0), "!strategy");
+        if (ltkDust != 0) IERC20(longToken).safeTransfer(newStrategy, ltkDust);
+        if (stkDust != 0) IERC20(shortToken).safeTransfer(newStrategy, stkDust);
     }
 
     /**
@@ -233,7 +237,11 @@ contract StrategyBalancerMettalexV3 {
         address tokenOut,
         uint256 minAmountOut,
         uint256 maxPrice
-    ) external hasMTLX returns (uint256 tokenAmountOut, uint256 spotPriceAfter) {
+    )
+        external
+        hasMTLX
+        returns (uint256 tokenAmountOut, uint256 spotPriceAfter)
+    {
         require(tokenAmountIn > 0, "ERR_AMOUNT_IN");
 
         //get tokens
@@ -388,7 +396,7 @@ contract StrategyBalancerMettalexV3 {
      */
     function setMtlxTokenAddress(address _mtlxToken) external {
         require(msg.sender == governance, "!governance");
-        require((_mtlxToken != address(0)),"invalid token address");
+        require((_mtlxToken != address(0)), "invalid token address");
         mtlxToken = _mtlxToken;
     }
 
@@ -399,7 +407,7 @@ contract StrategyBalancerMettalexV3 {
      */
     function setNewStrategy(address _strategy) external {
         require(msg.sender == governance, "!governance");
-        require((_strategy != address(0)),"invalid New Strategy");
+        require((_strategy != address(0)), "invalid New Strategy");
         newStrategy = _strategy;
     }
 
@@ -669,26 +677,43 @@ contract StrategyBalancerMettalexV3 {
 
         // Try to 'avoid CompilerError: Stack too deep, try removing local variables.'
         // by using single variable to store [x_s, x_l, x_c]
-        
+
         //--------------------------------------------
         //bal[0] = x_s
         //price.C = C
         //(price.spot.sub(price.floor)).div(price.range) = v
         //(price.cap.sub(price.spot)).div(price.range) = 1-v
         //bal[1] = x_l
-        //bal[2] = x_c   
+        //bal[2] = x_c
         //-------------------------------------------
 
         //-x_c*(v*(x_l - x_s) - x_l)
-        price.dc = (bal[2].mul((price.spot.sub(price.floor))).mul(bal[0]).div(price.range));
-        price.dc = price.dc.add(bal[2].mul(bal[1])).sub(bal[2].mul((price.spot.sub(price.floor))).mul(bal[1]).div(price.range));
+        price.dc = (
+            bal[2].mul((price.spot.sub(price.floor))).mul(bal[0]).div(
+                price.range
+            )
+        );
+        price.dc = price.dc.add(bal[2].mul(bal[1])).sub(
+            bal[2].mul((price.spot.sub(price.floor))).mul(bal[1]).div(
+                price.range
+            )
+        );
 
         //C*v*x_l*x_s
-        price.dl = (price.C).mul(bal[1]).mul(bal[0]).mul((price.spot.sub(price.floor))).div(price.range);
-        
+        price.dl = (price.C)
+            .mul(bal[1])
+            .mul(bal[0])
+            .mul((price.spot.sub(price.floor)))
+            .div(price.range);
+
         //C*x_l*x_s*(1-v)
-        price.ds = price.C.mul(bal[1]).mul(bal[0]).mul((price.cap.sub(price.spot))).div(price.range);
-        
+        price.ds = price
+            .C
+            .mul(bal[1])
+            .mul(bal[0])
+            .mul((price.cap.sub(price.spot)))
+            .div(price.range);
+
         //C*x_l*x_s + x_c*((v*x_s) + (1-v)*x_l)
         price.d = price.dc.add(price.dl).add(price.ds);
 
@@ -956,7 +981,10 @@ contract StrategyBalancerMettalexV3 {
         bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
         bal[2] = strategyWant.add(balancerWant);
-        uint256[3] memory wt = _calcDenormWeights(bal, IMettalexVault(mettalexVault).priceSpot());
+        uint256[3] memory wt = _calcDenormWeights(
+            bal,
+            IMettalexVault(mettalexVault).priceSpot()
+        );
 
         IBalancer bPool = IBalancer(balancer);
         // Rebind tokens to balancer pool again with newly calculated weights
