@@ -56,6 +56,7 @@ contract StrategyBalancerMettalexV3 {
     address public governance;
     address public mtlxToken;
     address public controller;
+    address public newStrategy;
 
     bool public isBreachHandled;
     bool public breaker;
@@ -211,8 +212,8 @@ contract StrategyBalancerMettalexV3 {
         require(_vault != address(0), "!vault");
         IERC20(want).safeTransfer(_vault, balance);
 
-        IERC20(longToken).safeTransfer(controller, ltkDust);
-        IERC20(shortToken).safeTransfer(controller, stkDust);
+        IERC20(longToken).safeTransfer(newStrategy, ltkDust);
+        IERC20(shortToken).safeTransfer(newStrategy, stkDust);
     }
 
     /**
@@ -389,6 +390,17 @@ contract StrategyBalancerMettalexV3 {
         require(msg.sender == governance, "!governance");
         require((_mtlxToken != address(0)),"invalid token address");
         mtlxToken = _mtlxToken;
+    }
+
+    /**
+     * @dev Used to update new strategy address
+     * @dev Can be called by governance only
+     * @param _strategy address The address of new strategy
+     */
+    function setNewStrategy(address _strategy) external {
+        require(msg.sender == governance, "!governance");
+        require((_strategy != address(0)),"invalid New Strategy");
+        newStrategy = _strategy;
     }
 
     /**
