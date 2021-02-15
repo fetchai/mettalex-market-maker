@@ -77,7 +77,7 @@ def get_contracts(w3, strategy_version=1):
     """
         make --directory=mettalex-balancer deploy_pool_factory
         make --directory=mettalex-balancer deploy_balancer_amm
-    	make --directory=mettalex-coin deploy  # NB: Pool controller fails if actual USDT contract is used
+    	make --directory=mettalex-coin deploy
         make --directory=mettalex-vault deploy_coin
         make --directory=mettalex-vault deploy_long
         make --directory=mettalex-vault deploy_short
@@ -204,6 +204,10 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
             elif k == 'YController':
                 deployed_contracts[k] = deploy_contract(
                     w3, contracts[k], w3.eth.defaultAccount)
+
+            elif k == 'Bridge':
+                deployed_contracts[k] = deploy_contract(
+                    w3, contracts[k], contract_cache['USDT'], contract_cache['Coin'], 100, 10000*(10**6) , 10)
 
             elif k == 'YVault':
                 deployed_contracts[k] = deploy_contract(
