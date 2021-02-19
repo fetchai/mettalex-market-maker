@@ -47,6 +47,8 @@ contract StrategyBalancerMettalexV3 {
     uint256 private constant APPROX_MULTIPLIER = 47;
     uint256 private constant INITIAL_MULTIPLIER = 50;
     uint256 public minMtlxBalance;
+    uint256 public constant maxDistFee = 10000;
+    uint256 public distFee = 0;
 
     address public want;
     address public balancer;
@@ -57,6 +59,7 @@ contract StrategyBalancerMettalexV3 {
     address public mtlxToken;
     address public controller;
     address public newStrategy;
+    address public distributionContract;
 
     bool public isBreachHandled;
     bool public breaker;
@@ -436,6 +439,42 @@ contract StrategyBalancerMettalexV3 {
     }
 
     /**
+     * @dev Used to update dist fee
+     * @dev Can be called by governance only
+     * @param _distFee uint256 The new swap fee
+     */
+    function setDistFee(uint256 _distFee) external {
+        require(msg.sender == governance, "!governance");
+        distFee = _distFee;
+    }
+
+    /**
+     * @dev Used to update new distributionContract address
+     * @dev Can be called by governance only
+     * @param _distributionContract address The address of new strategy
+     */
+    function setDistributionContract(address _distributionContract) external {
+        require(msg.sender == governance, "!governance");
+        require((_distributionContract != address(0)), "invalid New distributionContract");
+        distributionContract = _distributionContract;
+    }
+
+    /**
+     * @dev Used to update new distributionContract address
+     * @dev Can be called by governance only
+     * @param _distributionContract address The address of new strategy
+     * @param _distributionFee address The address of new strategy
+     */
+    function setDistribution(address _distributionContract, uint256 _distributionFee) external {
+        require(msg.sender == governance, "!governance");
+        require((_distributionContract != address(0)), "invalid New distributionContract");
+        require((_distributionFee != 0), "Fee should be greater then 0");
+        distributionContract = _distributionContract;
+        distFee = _distributionFee;
+    }
+
+
+    /**
      * @dev Used to pause the contract functions on which break is applied
      * @dev Can be called by governance only
      * @param _breaker bool The boolean value indicating contract is paused or not
@@ -507,6 +546,7 @@ contract StrategyBalancerMettalexV3 {
         require(bpool.isBound(fromToken));
         require(bpool.isBound(toToken));
         uint256 swapFee = bpool.getSwapFee();
+        uint256 fee = swapFee.add(distFee);
 
         uint256 tokenBalanceIn = bpool.getBalance(fromToken);
         uint256 tokenBalanceOut = bpool.getBalance(toToken);
@@ -520,7 +560,7 @@ contract StrategyBalancerMettalexV3 {
             tokenBalanceOut,
             tokenWeightOut,
             fromTokenAmount,
-            swapFee
+            fee
         );
 
         if (tokensReturned == 0) return (tokensReturned, 0);
@@ -554,6 +594,7 @@ contract StrategyBalancerMettalexV3 {
         require(bpool.isBound(fromToken));
         require(bpool.isBound(toToken));
         uint256 swapFee = bpool.getSwapFee();
+        uint256 fee = swapFee.add(distFee);
 
         uint256 tokenBalanceIn = bpool.getBalance(fromToken);
         uint256 tokenBalanceOut = bpool.getBalance(toToken);
@@ -567,7 +608,7 @@ contract StrategyBalancerMettalexV3 {
             tokenBalanceOut,
             tokenWeightOut,
             toTokenAmount,
-            swapFee
+            fee
         );
 
         if (tokensReturned == 0) return (tokensReturned, 0);
@@ -827,11 +868,16 @@ contract StrategyBalancerMettalexV3 {
         );
 
         IBalancer bPool = IBalancer(balancer);
-        IERC20(want).safeApprove(balancer, tokenAmountIn);
+        uint256 distAmount = distFee.mul(tokenAmountIn).div(maxDistFee);
+        if ((distAmount != 0) && (distributionContract != address(0))) {
+            IERC20(want).safeTransferFrom(msg.sender, distributionContract, distAmount);            
+        }
+        uint256 swapAmount = tokenAmountIn.sub(distAmount);
+        IERC20(want).safeApprove(balancer, swapAmount);
 
         (tokenAmountOut, spotPriceAfter) = bPool.swapExactAmountIn(
             want,
-            tokenAmountIn,
+            swapAmount,
             tokenOut,
             1,
             maxPrice
@@ -866,8 +912,14 @@ contract StrategyBalancerMettalexV3 {
         //Rebalance Pool
         updateSpotAndNormalizeWeights();
 
+        uint256 distAmount = distFee.mul(tokenAmountOut).div(maxDistFee);
+        uint256 returnAmount = tokenAmountOut.sub(distAmount);
+
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
-        IERC20(want).safeTransfer(msg.sender, tokenAmountOut);
+        if((distributionContract != address(0)) && (distAmount != 0)){
+            IERC20(want).safeTransfer(distributionContract, distAmount);
+        }
+        IERC20(want).safeTransfer(msg.sender, returnAmount);
     }
 
     function _swapPositions(
