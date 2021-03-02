@@ -2,5 +2,11 @@
   "Coin": ["Tether USD", "USDT", 6],
   "Long": ["Long Position", "LTOK", 5, 1],
   "Short": ["Short Position", "STOK", 5, 1],
-  "Vault": [300, 200, 1, 300, "Mettalex Vault", ""]
+  "Vault": [300, 200, 1, 300, "Mettalex Vault", ""],
+  "USDTFaucet": ["0x6e71C530bAdEB04b95C64a8ca61fe0b946A94525", 10000000000],
+  "ETHDistributor": [
+    "0x2407A3227aA2111Dd3563b7D24c231263da304d8",
+    100000000000000000
+  ],
+  "PoolController":[]
 }

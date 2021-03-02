@@ -27,6 +27,7 @@ contract Vault is Ownable {
     address public longPositionToken;
     address public shortPositionToken;
     address public oracle;
+    uint256 public settleFee = 0;
     //Automated market maker pool controller
     address public ammPoolController;
 
@@ -102,6 +103,17 @@ contract Vault is Ownable {
         uint256 _multiplier,
         uint256 _feeRate
     ) public {
+        require(_collateralToken != address(0));
+        require(_longPosition != address(0));
+        require(_shortPosition != address(0));
+        require(
+        (_collateralToken != _longPosition) &&
+        (_collateralToken != _shortPosition) &&
+        (_longPosition != _shortPosition)
+        );
+        require(_oracleAddress != address(0));
+        require(_ammPoolController != address(0));
+
         contractName = _name;
         version = _version;
         collateralToken = _collateralToken;
@@ -162,6 +174,11 @@ contract Vault is Ownable {
      * @param _to address The address to transfer the fee
      */
     function claimFee(address _to) external onlyOwner {
+        require(
+            (_to != address(0)) && (_to != address(this)),
+            "invalid to address"
+        );
+
         uint256 claimedCollateral = feeAccumulated;
         feeAccumulated = 0;
 
@@ -188,8 +205,21 @@ contract Vault is Ownable {
      * @param _newOracle address The address of new oracle contract
      */
     function updateOracle(address _newOracle) external onlyOwner {
+        require(
+            (_newOracle != address(0)) && (_newOracle != address(this)),
+            "invalid oracle address"
+        );   
         emit OracleUpdated(oracle, _newOracle);
         oracle = _newOracle;
+    }
+
+    /**
+     * @dev Changes the settle fee
+     * @param newSettleFee new settleFee
+     */
+    function updateSettleFee(uint256 newSettleFee) external onlyOwner{
+        require(newSettleFee <= (10**3), "ERR_MAX_SETTLE_FEE");
+        settleFee = newSettleFee;
     }
 
     /**
@@ -201,6 +231,11 @@ contract Vault is Ownable {
         external
         onlyOwner
     {
+        require(
+        (_newAMMPoolController != address(0)) && (_newAMMPoolController !=
+        address(this)),
+        "invalid amm pool controller"
+        );
         emit AMMPoolControllerUpdated(ammPoolController, _newAMMPoolController);
         ammPoolController = _newAMMPoolController;
     }
@@ -316,9 +351,9 @@ contract Vault is Ownable {
                 uint256 shortBurned,
                 uint256 collateralReturned
             ) = _settle(_settlers[index], collateral, long, short);
-            totalLongBurned += longBurned;
-            totalShortBurned += shortBurned;
-            totalCollateralReturned += collateralReturned;
+            totalLongBurned = totalLongBurned.add(longBurned);
+            totalShortBurned = totalShortBurned.add(shortBurned);
+            totalCollateralReturned = totalCollateralReturned.add(collateralReturned);
         }
 
         emit PositionSettledInBulk(
@@ -366,7 +401,9 @@ contract Vault is Ownable {
         uint256 quantityToMint = _collateralAmount.div(
             collateralWithFeePerUnit
         );
-        uint256 collateralFee = collateralFeePerUnit.mul(quantityToMint);
+        uint256 collateralFee = _collateralAmount
+        .mul(collateralFeePerUnit)
+        .div(collateralWithFeePerUnit);
         feeAccumulated = feeAccumulated.add(collateralFee);
         return (collateralFee, quantityToMint);
     }
@@ -395,18 +432,26 @@ contract Vault is Ownable {
     {
         uint256 longBalance = _long.balanceOf(_settler);
         uint256 shortBalance = _short.balanceOf(_settler);
-
+        uint256 fractionReturned = 1000;
+        if (msg.sender != ammPoolController) {
+            fractionReturned = fractionReturned.sub(settleFee);
+        }
         uint256 collateralReturned;
+        uint256 collateralAmount;
         if (settlementPrice < priceFloor) {
-            collateralReturned = collateralPerUnit.mul(shortBalance);
+            collateralAmount = collateralPerUnit.mul(shortBalance);
+            collateralReturned = collateralPerUnit.mul(shortBalance.mul(fractionReturned).div(1000));
         } else if (settlementPrice > priceCap) {
-            collateralReturned = collateralPerUnit.mul(longBalance);
+            collateralAmount = collateralPerUnit.mul(longBalance);
+            collateralReturned = collateralPerUnit.mul(longBalance.mul(fractionReturned).div(1000));
         }
 
         _long.burn(_settler, longBalance);
         _short.burn(_settler, shortBalance);
         _collateral.safeTransfer(_settler, collateralReturned);
 
+        feeAccumulated = feeAccumulated.add(collateralAmount.sub(collateralReturned));
+
         return (longBalance, shortBalance, collateralReturned);
     }
-}
+}   

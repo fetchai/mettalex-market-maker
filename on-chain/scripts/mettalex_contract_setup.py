@@ -41,6 +41,20 @@ def connect(network, account='user'):
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
 
+    elif network == 'bsc-mainnet':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = ' https://bsc-dataseed.binance.org/'
+        os.environ['WEB3_CHAIN_ID'] = '56'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
     elif network == 'kovan':
         config = read_config()
         os.environ['WEB3_INFURA_PROJECT_ID'] = config['infura']['project_id']
@@ -209,7 +223,12 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
 
     with open(cache_file, 'w') as f:
         json.dump(contract_cache, f)
+
+    print(deployed_contracts)
     return deployed_contracts
+
+
+yctrladd = ''
 
 
 def deploy(w3, contracts, cache_file_name='contract_cache.json'):
@@ -244,11 +263,17 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
 
     # Liquidity Provider
     y_controller = deploy_contract(w3, contracts['YController'], account)
+    yctrladd = y_controller.address
+    print(y_controller.address)
     y_vault = deploy_contract(
         w3, contracts['YVault'], coin.address, y_controller.address)
 
-    strategy = deploy_contract(
-        w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address)
+    if (len(args['PoolController'])):
+        strategy = deploy_contract(
+            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, args['PoolController'][0])
+    else:
+        strategy = deploy_contract(
+            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, coin.address)
 
     contract_addresses = {
         'BFactory': balancer_factory.address,
@@ -317,7 +342,7 @@ def get_network(w3):
     return network
 
 
-def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vault, ltk, stk):
+def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vault, ltk, stk, mtlx):
     # deploy new strategy
     new_strategy = deploy_contract(
         w3,
@@ -327,12 +352,19 @@ def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vaul
         balancer.address,
         vault.address,
         ltk.address,
-        stk.address
+        stk.address,
+        mtlx.address
     )
+    print(new_strategy.address)
+
+    tx_hash = strategy.functions.setNewStrategy(new_strategy.address).transact(
+        {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
+    )
+    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # setStrategy
     set_strategy(w3, y_controller, coin, new_strategy)
-
+    set_autonomous_market_maker(w3, vault, new_strategy)
     # update pool controller from old strategy
     update_pool_controller(w3, balancer, strategy, new_strategy)
 
@@ -372,7 +404,7 @@ def upgrade_strategy_v2(w3, contracts, strategy, y_controller, coin, balancer, v
 
 def connect_strategy(w3, address):
     build_file = Path(__file__).parent / ".." / 'pool-controller' / \
-        'build' / 'contracts' / 'StrategyBalancerMettalex.json'
+        'build' / 'contracts' / 'StrategyBalancerMettalexV3.json'
     with open(build_file, 'r') as f:
         contract_details = json.load(f)
 
@@ -439,6 +471,8 @@ def set_strategy(w3, y_controller, tok, strategy):
 def update_pool_controller(w3, balancer, strategy, new_strategy):
     acct = w3.eth.defaultAccount
     old_balancer_controller = balancer.functions.getController().call()
+    print(old_balancer_controller, "-------467")
+    print(strategy.address, "-------468")
     tx_hash = strategy.functions.updatePoolController(new_strategy.address).transact({
         'from': acct, 'gas': 1_000_000})
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
@@ -942,7 +976,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--network', '-n', dest='network', default='local',
-        help='For connecting to local, kovan or bsc-testnet network'
+        help='For connecting to local, kovan, bsc-testnet or bsc-mainnet network'
     )
     parser.add_argument(
         '--strategy', '-v', dest='strategy', default=1,
@@ -950,7 +984,7 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-    assert args.network in {'local', 'kovan', 'bsc-testnet'}
+    assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet'}
     assert args.strategy in {'1', '2', '3', '4'}
 
     w3, admin = connect(args.network, 'admin')
@@ -977,6 +1011,487 @@ if __name__ == '__main__':
 
     reporter = BalanceReporter(w3, ltk, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
+
+    old_balancer_controller = balancer.functions.getController().call()
+    print(old_balancer_controller, "--------1009")
+
+    y_controller_add = y_vault.functions.controller().call()
+    abi_yController = [
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_rewards",
+                    "type": "address"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "constructor"
+        },
+        {
+            "constant": True,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                }
+            ],
+            "name": "balanceOf",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "name": "converters",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "_amount",
+                    "type": "uint256"
+                }
+            ],
+            "name": "earn",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [],
+            "name": "factory",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_strategy",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "parts",
+                    "type": "uint256"
+                }
+            ],
+            "name": "getExpectedReturn",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "expected",
+                    "type": "uint256"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [],
+            "name": "governance",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "_amount",
+                    "type": "uint256"
+                }
+            ],
+            "name": "inCaseTokensGetStuck",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [],
+            "name": "max",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [],
+            "name": "onesplit",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [],
+            "name": "rewards",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_input",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "_output",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "_converter",
+                    "type": "address"
+                }
+            ],
+            "name": "setConverter",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_factory",
+                    "type": "address"
+                }
+            ],
+            "name": "setFactory",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_governance",
+                    "type": "address"
+                }
+            ],
+            "name": "setGovernance",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_onesplit",
+                    "type": "address"
+                }
+            ],
+            "name": "setOneSplit",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "_split",
+                    "type": "uint256"
+                }
+            ],
+            "name": "setSplit",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "_strategy",
+                    "type": "address"
+                }
+            ],
+            "name": "setStrategy",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "_vault",
+                    "type": "address"
+                }
+            ],
+            "name": "setVault",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [],
+            "name": "split",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "name": "strategies",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": True,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "name": "vaults",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "payable": False,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                }
+            ],
+            "name": "withdraw",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "_amount",
+                    "type": "uint256"
+                }
+            ],
+            "name": "withdraw",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                }
+            ],
+            "name": "withdrawAll",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "constant": False,
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "_strategy",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "_token",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "parts",
+                    "type": "uint256"
+                }
+            ],
+            "name": "yearn",
+            "outputs": [],
+            "payable": False,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        }
+    ]
+
+    print(y_controller_add)
+    y_controller = w3.eth.contract(
+        address=y_controller_add, abi=abi_yController)
+    upgrade_strategy(w3, contracts, strategy, y_controller,
+                     coin, balancer, vault, ltk, stk, coin)
+    # print(balancer.functions.getController().call())
+    # print(y_controller.functions.strategies(coin.address).call())
+    # balancer.functions.getController().call()
+    # get_spot_price()
+    # print()
+    # strategy.functions.getExpectedOutAmount(ltk, coin, 1)
 
     # Print user balance
     # reporter.print_balances(admin, 'admin')
