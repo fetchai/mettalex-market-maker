@@ -1,9 +1,16 @@
 import os
+import random
 import subprocess
 from pathlib import Path
 import json
 import argparse
 import shutil
+from brownie import project, network
+
+p = project.load('../fee-distribution', name="FeeDistributor")
+from brownie.project.FeeDistributor import FeeDistributor
+network.connect('development')
+
 
 PRICE_DECIMALS = 1
 PRICE_SCALE = 10 * PRICE_DECIMALS
@@ -20,7 +27,6 @@ def read_config():
 def connect(network, account='user'):
     if network == 'local':
         from web3 import Web3
-
         w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545"))
         try:
             w3.eth.defaultAccount = w3.eth.accounts[0]
@@ -275,6 +281,18 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         strategy = deploy_contract(
             w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, coin.address)
 
+        userAddresses = [w3.eth.accounts[1], w3.eth.accounts[2]]
+        fractions = [60, 40]
+        brownieAccounts = network.accounts
+        brownieAdmin = brownieAccounts[0]
+        FeeDistributorContract = brownieAdmin.deploy(
+            FeeDistributor, coin.address, strategy.address, userAddresses, fractions)
+
+        tx_hash = strategy.functions.setDistribution(FeeDistributorContract.address, 10).transact(
+                {'from': admin, 'gas': 5_000_000}
+        )
+        tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+
     contract_addresses = {
         'BFactory': balancer_factory.address,
         'BPool': balancer.address,
@@ -284,7 +302,9 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'Vault': vault.address,
         'YVault': y_vault.address,
         'YController': y_controller.address,
-        'PoolController': strategy.address
+        'PoolController': strategy.address,
+        'FeeDistributor': FeeDistributorContract.address
+
     }
     with open(cache_file, 'w') as f:
         json.dump(contract_addresses, f)
@@ -298,7 +318,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'Vault': vault,
         'YVault': y_vault,
         'YController': y_controller,
-        'PoolController': strategy
+        'PoolController': strategy,
+        'FeeDistributor': FeeDistributorContract
     }
     return deployed_contracts
 
@@ -844,25 +865,33 @@ def update_oracle(w3, admin, vault, oracle, vault_address=None):
 
 
 def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
-    # approve
-    tx_hash = tokenIn.functions.approve(strategy.address, amountIn).transact(
-        {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
-    )
-    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-
-    # swap
     MAX_UINT_VALUE = 2**256 - 1
 
+    # approve
+    allowance = tokenIn.functions.allowance(
+        w3.eth.defaultAccount, strategy.address).call()
+    print(allowance, "allowance")
+
+    if allowance < amountIn:
+        # approve max amount to save gas cost of approve() (Not recommended - used only for trades)
+        tx_hash = tokenIn.functions.approve(strategy.address, MAX_UINT_VALUE).transact(
+            {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
+        )
+        tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print('swap started')
+
+    # swap
     tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut, MAX_UINT_VALUE).transact(
         {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # amount of tokens received
-    logs = strategy.events.LOG_SWAP.getLogs()
+    logs = strategy.events.LOG_SWAP().processReceipt(tx_receipt)
     amount_out = logs[0]['args']['tokenAmountOut']
     print(
         f'Swap successful from {tokenIn.address} to {tokenOut.address} with received amount = {amount_out}')
+    return amount_out
 
 
 def get_balance(address, coin, ltk, stk):
@@ -1008,6 +1037,7 @@ if __name__ == '__main__':
     balancer = deployed_contracts['BPool']
     y_vault = deployed_contracts['YVault']
     strategy = deployed_contracts['PoolController']
+    FeeDistributorContract = deployed_contracts['FeeDistributor']
 
     reporter = BalanceReporter(w3, ltk, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
@@ -1484,14 +1514,3 @@ if __name__ == '__main__':
     print(y_controller_add)
     y_controller = w3.eth.contract(
         address=y_controller_add, abi=abi_yController)
-    upgrade_strategy(w3, contracts, strategy, y_controller,
-                     coin, balancer, vault, ltk, stk, coin)
-    # print(balancer.functions.getController().call())
-    # print(y_controller.functions.strategies(coin.address).call())
-    # balancer.functions.getController().call()
-    # get_spot_price()
-    # print()
-    # strategy.functions.getExpectedOutAmount(ltk, coin, 1)
-
-    # Print user balance
-    # reporter.print_balances(admin, 'admin')
