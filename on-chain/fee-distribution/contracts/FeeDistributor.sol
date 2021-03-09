@@ -112,6 +112,32 @@ contract FeeDistributor is Ownable {
         return true;
     }
 
+    /**
+     * @dev called externally by user to transfer collected fees to his account for a specified periods
+     * @return true if updation amount transfer wrt fraction sucessful
+     */
+    function withdraw(uint256 nPeriods) external returns (bool) {
+        uint256 totalAmount = 0;
+        uint256 currentUserDistId = currentWithdrawalDistributionId[msg.sender];
+        uint256 totalPeriod = currentUserDistId.add(nPeriods);
+        if (totalPeriod >= distributionIndex) {
+            totalPeriod = distributionIndex;   
+        }
+        for(uint256 i = currentUserDistId; i <= totalPeriod; i++) {
+            uint256 amount = getBalanceByDistribution(msg.sender, i);
+
+            if (amount > 0) {
+                distributions[i].fundsWithdrawn[msg.sender] = distributions[i].fundsWithdrawn[msg.sender].add(amount);
+                totalAmount = totalAmount.add(amount);
+            }
+        }
+
+        IERC20(want).safeTransfer(msg.sender, totalAmount);
+        currentWithdrawalDistributionId[msg.sender] = totalPeriod;
+        
+        return true;
+    }
+
 
     /**
      * @dev called externally by owner to update strategy address linked to the contract

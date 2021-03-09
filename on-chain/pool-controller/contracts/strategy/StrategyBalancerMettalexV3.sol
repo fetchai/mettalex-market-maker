@@ -48,8 +48,10 @@ contract StrategyBalancerMettalexV3 {
     uint256 private constant APPROX_MULTIPLIER = 47;
     uint256 private constant INITIAL_MULTIPLIER = 50;
     uint256 public minMtlxBalance;
-    uint256 public constant maxDistFee = 10000;
+    uint256 public constant MAX_DIST_FEE = 10**17;
     uint256 public distFee = 0;
+    uint256 public exitFee = 0;
+    uint256 public MAX_EXIT_FEE = 10**17;
 
     address public want;
     address public balancer;
@@ -171,6 +173,9 @@ contract StrategyBalancerMettalexV3 {
             _unbind();
 
             _redeemPositions();
+
+            uint256 fees = _amount.mul(exitFee).div(MAX_EXIT_FEE);
+            _amount = _amount.sub(fees);
 
             // Transfer out required funds to yVault.
             IERC20(want).safeTransfer(
@@ -447,6 +452,16 @@ contract StrategyBalancerMettalexV3 {
     function setDistFee(uint256 _distFee) external {
         require(msg.sender == governance, "!governance");
         distFee = _distFee;
+    }
+
+    /**
+     * @dev Used to update exit fee
+     * @dev Can be called by governance only
+     * @param _exitFee uint256 The new exit fee
+     */
+    function setExitFee(uint256 _exitFee) external {
+        require(msg.sender == governance, "!governance");
+        exitFee = _exitFee;
     }
 
     /**
@@ -869,7 +884,7 @@ contract StrategyBalancerMettalexV3 {
         );
 
         IBalancer bPool = IBalancer(balancer);
-        uint256 distAmount = distFee.mul(tokenAmountIn).div(maxDistFee);
+        uint256 distAmount = distFee.mul(tokenAmountIn).div(MAX_DIST_FEE);
         if ((distAmount != 0) && (distributionContract != address(0))) {
             IERC20(want).safeTransferFrom(msg.sender, address(this), distAmount);
             IERC20(want).safeApprove(distributionContract, distAmount);
@@ -916,7 +931,7 @@ contract StrategyBalancerMettalexV3 {
         //Rebalance Pool
         updateSpotAndNormalizeWeights();
 
-        uint256 distAmount = distFee.mul(tokenAmountOut).div(maxDistFee);
+        uint256 distAmount = distFee.mul(tokenAmountOut).div(MAX_DIST_FEE);
         uint256 returnAmount = tokenAmountOut.sub(distAmount);
 
         require(tokenAmountOut >= minAmountOut, "ERR_MIN_OUT");
