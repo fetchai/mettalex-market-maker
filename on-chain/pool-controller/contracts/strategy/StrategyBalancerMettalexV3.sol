@@ -480,8 +480,8 @@ contract StrategyBalancerMettalexV3 {
     /**
      * @dev Used to update new distributionContract address
      * @dev Can be called by governance only
-     * @param _distributionContract address The address of new strategy
-     * @param _distributionFee address The address of new strategy
+     * @param _distributionContract address The address of new distribution contract
+     * @param _distributionFee The new distribution fee
      */
     function setDistribution(address _distributionContract, uint256 _distributionFee) external {
         require(msg.sender == governance, "!governance");

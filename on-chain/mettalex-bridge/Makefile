@@ -10,8 +10,9 @@ upgrade:
 
 init:
 	npm init -y
-	npm install @openzeppelin/cli
-	npm install @openzeppelin/contracts-ethereum-package@2.5
+	npm install @openzeppelin/cli@2.8.2
+	# npm install @openzeppelin/contracts-ethereum-package@2.5
+	npm install @openzeppelin/contracts@2.5.1
 	npm audit fix
 	rm -rf .openzeppelin
 	npx oz init pool-controller --no-interactive
