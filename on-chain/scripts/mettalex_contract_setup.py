@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import argparse
 import shutil
+import re
 
 PRICE_DECIMALS = 1
 PRICE_SCALE = 10 * PRICE_DECIMALS
@@ -66,6 +67,14 @@ def connect(network, account='user'):
         admin = w3.eth.account.from_key(config[account]['key'])
         w3.eth.defaultAccount = admin.address
         w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+    elif re.match(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$", network):
+            from web3 import Web3
+            w3 = Web3(Web3.HTTPProvider("http://" + network))
+            try:
+                w3.eth.defaultAccount = w3.eth.accounts[0]
+                admin = w3.eth.accounts[0]
+            except:
+                raise Exception("Ensure ganache-cli is connected")
     else:
         raise ValueError(f'Unknown network {network}')
 
@@ -989,7 +998,7 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-    assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet'}
+    assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet'} or re.match(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",args.network)
     assert args.strategy in {'1', '2', '3', '4'}
 
     w3, admin = connect(args.network, 'admin')
