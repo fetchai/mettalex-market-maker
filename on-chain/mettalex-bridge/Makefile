@@ -15,4 +15,4 @@ init:
 	npm install @openzeppelin/contracts@2.5.1
 	npm audit fix
 	rm -rf .openzeppelin
-	npx oz init pool-controller --no-interactive
+	npx oz init mettalex-bridge --no-interactive

@@ -1,6 +1,7 @@
 init:
 	cd mettalex-balancer/ && npm install &&	npx oz compile
 	cd mettalex-coin/ && npm install &&	npx oz compile
+	cd mettalex-bridge/ && npm install && npx oz compile
 	cd mettalex-faucet/ && npm install &&	npx oz compile
 	cd mettalex-vault/ &&	npm install &&	npx oz compile
 	cd mettalex-yearn/ &&	npm install &&	npx oz compile
@@ -11,7 +12,7 @@ init:
 deploy:
 	make --directory=mettalex-balancer deploy_pool_factory
 	make --directory=mettalex-balancer deploy_balancer_amm
-#	make --directory=mettalex-coin deploy  # NB: Pool controller fails if actual USDT contract is used
+	make --directory=mettalex-coin build  # NB: Pool controller fails if actual USDT contract is used
 	make --directory=mettalex-vault deploy_coin
 	make --directory=mettalex-vault deploy_long
 	make --directory=mettalex-vault deploy_short

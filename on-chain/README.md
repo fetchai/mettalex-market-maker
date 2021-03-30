@@ -8,18 +8,33 @@ MMcD 2020-08-12: With better devops and git-fu this could probably be done with 
 branches and appropriate CI/CD setup however that is a refinement for later.
 
 # Components
-* mettalex-coin: Stablecoin used for vault collateral and fees.  
-  Copy of [TetherToken (USDT)](https://etherscan.io/address/0xdac17f958d2ee523a2206206994597c13d831ec7#code)
+
+## Core Components
 * mettalex-vault: Vault and position tokens for storing coin and minting/redeeming positions 
+  * mettalex-protocol directory contains these as separate protocol for unit testing, mettalex-vault is used in full system
+    build process
+* **pool-controller**: (key component) controller for non-finalized Balancer pool AMM that 
+  updates weights in response to underlying asset price change.  
+  Originally based on  [StrategyBalancerMTA](https://etherscan.io/address/0x15f8afe8e14a91814808fb14cdf25feca4bd835a#code) as
+  a starting point but then modify to interact with a non-finalised pool and price updates.
+  Current version implements dynamic Balancer pool weights to keep sum of position token prices
+  equal to underlying collateral value as described in 
+  [Mettalex Autonomous Market Maker Mathematics](https://medium.com/mettalex/mettalex-autonomous-market-maker-mathematics-f28470d188d6)
+
+## Reused Existing DeFi Components 
 * mettalex-yearn: copy of yearn [yVault](https://etherscan.io/address/0x5dbcf33d8c2e976c6b560249878e6f1491bca25c#code)
   and [Controller](https://etherscan.io/address/0x31317f9a5e4cc1d231bdf07755c994015a96a37c#code) contracts for liquidity providers to deposit funds and for 
   those funds to be used by autonomous market maker
 * mettalex-balancer: autonomous market maker factory and pool from 
   [Balancer](https://docs.balancer.finance/smart-contracts/addresses) 
-* **pool-controller**: (key component) controller for non-finalized Balancer pool AMM that 
-  updates weights in response to underlying asset price change.  
-  Starting with [StrategyBalancerMTA](https://etherscan.io/address/0x15f8afe8e14a91814808fb14cdf25feca4bd835a#code) as
-  a starting point but then modify to interact with a non-finalised pool and price updates.
+
+## Non-Core Components
+For integration with USDT (Tether) and other non-standard ERC20 tokens we need a bridge contract
+to convert into standard ERC20 tokens.
+
+* mettalex-coin: Stablecoin used for vault collateral and fees.  
+  Copy of [TetherToken (USDT)](https://etherscan.io/address/0xdac17f958d2ee523a2206206994597c13d831ec7#code)
+* mettalex-bridge: Conversion between non-standard ERC20 token for USDT and ERC20 token used as coin within Mettalex.
 
 
 ## Getting started
