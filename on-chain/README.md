@@ -47,7 +47,7 @@ From this directory the `scripts/mettalex_contract_setup.py` script deploys or c
 
 * To deploy all the contracts and get their instances, run following command:
 
-    `$python3 mettalex_contract_setup.py -a setup -n local -v 2`
+    `$python3 mettalex_contract_setup.py -a setup -n local -v 3`
 
 We can provide the contract addresses to `scripts/contract-cache/contract_address.json` if we want to connect the existing contracts.
 If the address left blank, it will be automatically deployed by the script.
