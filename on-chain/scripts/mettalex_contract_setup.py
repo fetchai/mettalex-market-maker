@@ -67,7 +67,7 @@ def connect(network, account='user'):
         admin = w3.eth.account.from_key(config[account]['key'])
         w3.eth.defaultAccount = admin.address
         w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
-    elif re.match(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$", network):
+    elif is_ipv4_socket_address(network):
             from web3 import Web3
             w3 = Web3(Web3.HTTPProvider("http://" + network))
             try:
@@ -981,6 +981,8 @@ def redeem(w3, vault, amount):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     tx_receipt.gasUsed
 
+def is_ipv4_socket_address(network):
+    return re.match(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",network)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
@@ -998,7 +1000,7 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-    assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet'} or re.match(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",args.network)
+    assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet'} or is_ipv4_socket_address(args.network)
     assert args.strategy in {'1', '2', '3', '4'}
 
     w3, admin = connect(args.network, 'admin')
