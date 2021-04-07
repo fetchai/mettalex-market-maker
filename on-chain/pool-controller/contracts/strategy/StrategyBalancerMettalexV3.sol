@@ -105,14 +105,6 @@ contract StrategyBalancerMettalexV3 {
     }
 
     /**
-     * @dev Throws if breach already handled after commodity settled
-     */
-    modifier callOnce {
-        require(!isBreachHandled, "breach already handled");
-        _;
-    }
-
-    /**
      * @dev Throws if vault contract is not settled
      */
     modifier notSettled {
@@ -312,13 +304,14 @@ contract StrategyBalancerMettalexV3 {
      * @dev isBreachHandled updated in updateCommodityAfterBreach() with same BPool and Strategy
      * but new position tokens and vault
      */
-    function handleBreach() public settled callOnce {
+    function handleBreach() public settled {
         require(!breaker, "!breaker");
-
-        isBreachHandled = true;
-        // Unbind tokens from Balancer pool
-        _unbind();
-        _settle();
+        if (!isBreachHandled) {
+            isBreachHandled = true;
+            // Unbind tokens from Balancer pool
+            _unbind();
+            _settle();
+        }
     }
 
     /**

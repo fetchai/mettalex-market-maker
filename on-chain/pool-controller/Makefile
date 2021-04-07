@@ -1,4 +1,4 @@
-build: contracts/StrategyBalancerMettalex.sol
+build: contracts/strategy/StrategyBalancerMettalexV3.sol
 	npx oz compile
 
 deploy:
