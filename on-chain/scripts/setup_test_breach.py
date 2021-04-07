@@ -5,11 +5,11 @@ from mettalex_contract_setup import connect, deploy, full_setup, deposit, earn, 
 import os
 import sys
 
-os.chdir('price-leveraged-token/market-maker/on-chain')
-sys.path.append(os.getcwd())
+# os.chdir('price-leveraged-token/market-maker/on-chain')
+# sys.path.append(os.getcwd())
 
 w3, admin = connect('local', 'admin')
-contracts = get_contracts(w3, 2)
+contracts = get_contracts(w3, 3)
 deployed_contracts = deploy(w3, contracts)
 w3, acc, deployed_contracts = full_setup(w3, admin, deployed_contracts=deployed_contracts, price=2500)
 
@@ -38,7 +38,7 @@ mVault.functions.isSettled().call()
 mVault.functions.priceSpot().call()
 mVault.functions.priceFloor().call()
 mVault.functions.priceCap().call()
-strategy.functions.supply().call()
+# #strategy.functions.supply().call()
 
 # balancer get number of tokens
 balancer.functions.getNumTokens().call()
@@ -77,15 +77,15 @@ try:
 except:
     print("Vault not breached")
 
-strategy.functions.supply().call()
+# #strategy.functions.supply().call()
 
 withdraw(w3, y_vault, 11000)
 
-strategy.functions.supply().call()
+# #strategy.functions.supply().call()
 mVault.functions.isSettled().call()
 ltk.functions.totalSupply().call()
 stk.functions.totalSupply().call()
-strategy.functions.supply().call()
+#strategy.functions.supply().call()
 strategy.functions.isBreachHandled().call()
 
 # trigger breach
@@ -97,7 +97,7 @@ tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 mVault.functions.isSettled().call()
 ltk.functions.totalSupply().call()
 stk.functions.totalSupply().call()
-strategy.functions.supply().call()
+# #strategy.functions.supply().call()
 strategy.functions.isBreachHandled().call()
 
 # handle breach
@@ -111,7 +111,7 @@ mVault.functions.isSettled().call()
 ltk.functions.totalSupply().call()
 stk.functions.totalSupply().call()
 # See increased supply after breach handle
-strategy.functions.supply().call()
+#strategy.functions.supply().call()
 
 strategy.functions.isBreachHandled().call()
 
@@ -134,7 +134,7 @@ except:
 withdraw(w3, y_vault, 11000)
 
 # See decreased supply after withdraw
-strategy.functions.supply().call()
+#strategy.functions.supply().call()
 strategy.functions.isBreachHandled().call()
 
 # Deploy new vault and long and short token
