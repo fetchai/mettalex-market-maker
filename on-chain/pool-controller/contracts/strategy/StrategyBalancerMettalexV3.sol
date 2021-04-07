@@ -105,14 +105,6 @@ contract StrategyBalancerMettalexV3 {
     }
 
     /**
-     * @dev Throws if breach already handled after commodity settled
-     */
-    modifier callOnce {
-        require(!isBreachHandled, "breach already handled");
-        _;
-    }
-
-    /**
      * @dev Throws if vault contract is not settled
      */
     modifier notSettled {
