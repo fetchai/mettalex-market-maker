@@ -5,6 +5,7 @@ import json
 import argparse
 import shutil
 import re
+import time
 
 PRICE_DECIMALS = 1
 PRICE_SCALE = 10 * PRICE_DECIMALS
@@ -127,6 +128,11 @@ def get_contracts(w3, strategy_version=1):
     bridge_build_file = Path(
         __file__).parent / ".." / 'mettalex-bridge' / 'build' / 'contracts' / 'Bridge.json'
 
+
+    StrategyHelper_build_file = Path(
+        __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / 'StrategyHelper.json'
+
+
     contracts = {
         'BFactory': create_contract(w3, bfactory_build_file),
         'BPool': create_contract(w3, bpool_build_file),
@@ -139,6 +145,7 @@ def get_contracts(w3, strategy_version=1):
         'PoolController': create_contract(w3, pool_controller_build_file),
         'Bridge': create_contract(w3, bridge_build_file),
         'USDT': create_contract(w3, USDT_build_file),
+        'StrategyHelper': create_contract(w3, StrategyHelper_build_file)
     }
     return contracts
 
@@ -286,6 +293,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
     y_vault = deploy_contract(
         w3, contracts['YVault'], coin.address, y_controller.address)
     
+    strategy_helper = deploy_contract(w3, contracts['StrategyHelper'])
+
     if (len(args['PoolController'])):
         strategy = deploy_contract(
             w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, args['PoolController'][0])
@@ -304,7 +313,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'YController': y_controller.address,
         'PoolController': strategy.address,
         'Bridge': bridge.address,
-        'USDT': USDT.address
+        'USDT': USDT.address,
+        "StrategyHelper": strategy_helper.address
     }
     with open(cache_file, 'w') as f:
         json.dump(contract_addresses, f)
@@ -320,7 +330,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'YController': y_controller,
         'PoolController': strategy,
         'USDT':USDT,
-        'Bridge': bridge
+        'Bridge': bridge,
+        "StrategyHelper": strategy_helper
     }
     return deployed_contracts
 
@@ -635,10 +646,13 @@ def deposit(w3, y_vault, coin, amount, customAccount=None):
     tx_hash = coin.functions.approve(y_vault.address, amount_unitless).transact(
         {'from': acct, 'gas': 1_000_000}
     )
+    # time.sleep(5)
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
+    print('approved')
     tx_hash = y_vault.functions.deposit(amount_unitless).transact(
         {'from': acct, 'gas': 1_000_000}
     )
+    # time.sleep(5)
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Deposit in YVault. Amount: {amount} coin. Depositer: {acct}')
 
@@ -648,6 +662,7 @@ def earn(w3, y_vault):
     tx_hash = y_vault.functions.earn().transact(
         {'from': acct, 'gas': 5_000_000}
     )
+    # time.sleep(5)
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     print(f'Liquidity supplied to AMM balancer. Earn Function Caller: {acct}')
 
@@ -862,6 +877,7 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
     tx_hash = tokenIn.functions.approve(strategy.address, amountIn).transact(
         {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
     )
+    # time.sleep(5)
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # swap
@@ -870,6 +886,7 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
     tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut, MAX_UINT_VALUE).transact(
         {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
     )
+    # time.sleep(5)
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # amount of tokens received
@@ -1026,6 +1043,7 @@ if __name__ == '__main__':
     strategy = deployed_contracts['PoolController']
     bridge = deployed_contracts['Bridge']
     USDT = deployed_contracts['USDT']
+    strategy_helper = deployed_contracts['StrategyHelper']
 
     reporter = BalanceReporter(w3, ltk, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
@@ -1033,3 +1051,4 @@ if __name__ == '__main__':
 
     # Print user balance
     # reporter.print_balances(admin, 'admin')
+
