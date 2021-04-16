@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "../interfaces/IBalancer.sol";
 import "../interfaces/IMettalexVault.sol";
 import "../interfaces/IYController.sol";
-// import "../interfaces/IFeeDistributor.sol";
+import "../interfaces/IStrategyHelper.sol";
 
 /**
  * @title StrategyBalancerMettalexV3
@@ -31,20 +31,6 @@ contract StrategyBalancerMettalexV3 {
     using SafeMath for uint256;
     using SignedSafeMath for int256;
 
-    // Struct containing variables needed for denormalized weight calculation
-    // to avoid stack error
-    struct PriceInfo {
-        uint256 floor;
-        uint256 spot;
-        uint256 cap;
-        uint256 range;
-        uint256 C;
-        uint256 dc;
-        uint256 dl;
-        uint256 ds;
-        uint256 d;
-    }
-
     uint256 private constant APPROX_MULTIPLIER = 47;
     uint256 private constant INITIAL_MULTIPLIER = 50;
     uint256 public minMtlxBalance;
@@ -63,6 +49,7 @@ contract StrategyBalancerMettalexV3 {
     address public controller;
     address public newStrategy;
     address public distributionContract;
+    address public strategyHelper;
 
     bool public isBreachHandled;
     bool public breaker;
@@ -470,6 +457,11 @@ contract StrategyBalancerMettalexV3 {
         distributionContract = _distributionContract;
     }
 
+    function setStrategyHelper(address _strategyHelper) external {
+        require(msg.sender == governance, "!governance");
+        require((_strategyHelper != address(0)), "invalid strategyHelper");
+        strategyHelper = _strategyHelper;
+    }
     /**
      * @dev Used to update new distributionContract address
      * @dev Can be called by governance only
@@ -712,86 +704,6 @@ contract StrategyBalancerMettalexV3 {
         mVault.settlePositions();
     }
 
-    function _calcDenormWeights(uint256[3] memory bal, uint256 spotPrice)
-        internal
-        view
-        returns (uint256[3] memory wt)
-    {
-        //  Number of collateral tokens per pair of long and short tokens
-        IMettalexVault mVault = IMettalexVault(mettalexVault);
-        PriceInfo memory price;
-
-        price.spot = spotPrice; //mVault.priceSpot();
-        price.floor = mVault.priceFloor();
-        price.cap = mVault.priceCap();
-        price.range = price.cap.sub(price.floor);
-        price.C = mVault.collateralPerUnit();
-
-        // Try to 'avoid CompilerError: Stack too deep, try removing local variables.'
-        // by using single variable to store [x_s, x_l, x_c]
-
-        //--------------------------------------------
-        //bal[0] = x_s
-        //price.C = C
-        //(price.spot.sub(price.floor)).div(price.range) = v
-        //(price.cap.sub(price.spot)).div(price.range) = 1-v
-        //bal[1] = x_l
-        //bal[2] = x_c
-        //-------------------------------------------
-
-        //-x_c*(v*(x_l - x_s) - x_l)
-        price.dc = (
-            bal[2].mul((price.spot.sub(price.floor))).mul(bal[0]).div(
-                price.range
-            )
-        );
-        price.dc = price.dc.add(bal[2].mul(bal[1])).sub(
-            bal[2].mul((price.spot.sub(price.floor))).mul(bal[1]).div(
-                price.range
-            )
-        );
-
-        //C*v*x_l*x_s
-        price.dl = (price.C)
-            .mul(bal[1])
-            .mul(bal[0])
-            .mul((price.spot.sub(price.floor)))
-            .div(price.range);
-
-        //C*x_l*x_s*(1-v)
-        price.ds = price
-            .C
-            .mul(bal[1])
-            .mul(bal[0])
-            .mul((price.cap.sub(price.spot)))
-            .div(price.range);
-
-        //C*x_l*x_s + x_c*((v*x_s) + (1-v)*x_l)
-        price.d = price.dc.add(price.dl).add(price.ds);
-
-        wt[0] = price.ds.mul(1 ether).div(price.d);
-        wt[1] = price.dl.mul(1 ether).div(price.d);
-        wt[2] = price.dc.mul(1 ether).div(price.d);
-
-        // current price at +-1% of floor or cap
-        uint256 x = price.range.div(100);
-
-        //adjusting weights to avoid max and min weight errors in BPool
-        if (
-            price.floor.add(x) >= price.spot || price.cap.sub(x) <= price.spot
-        ) {
-            wt[0] = wt[0].mul(APPROX_MULTIPLIER).add(1 ether);
-            wt[1] = wt[1].mul(APPROX_MULTIPLIER).add(1 ether);
-            wt[2] = wt[2].mul(APPROX_MULTIPLIER).add(1 ether);
-        } else {
-            wt[0] = wt[0].mul(INITIAL_MULTIPLIER);
-            wt[1] = wt[1].mul(INITIAL_MULTIPLIER);
-            wt[2] = wt[2].mul(INITIAL_MULTIPLIER);
-        }
-
-        return wt;
-    }
-
     function _rebalance(uint256 spotPrice) internal {
         // Get AMM Pool token balances
         uint256[3] memory bal;
@@ -800,7 +712,7 @@ contract StrategyBalancerMettalexV3 {
         bal[2] = IERC20(want).balanceOf(balancer);
 
         // Re-calculate de-normalised weights
-        uint256[3] memory newWt = _calcDenormWeights(bal, spotPrice);
+        uint256[3] memory newWt = IStrategyHelper(strategyHelper).CalcDenormWeights(bal, spotPrice, mettalexVault);
 
         address[3] memory tokens = [shortToken, longToken, want];
 
@@ -1045,9 +957,10 @@ contract StrategyBalancerMettalexV3 {
         bal[0] = strategyStk.add(balancerStk);
         bal[1] = strategyLtk.add(balancerLtk);
         bal[2] = strategyWant.add(balancerWant);
-        uint256[3] memory wt = _calcDenormWeights(
+        uint256[3] memory wt = IStrategyHelper(strategyHelper).CalcDenormWeights(
             bal,
-            IMettalexVault(mettalexVault).priceSpot()
+            IMettalexVault(mettalexVault).priceSpot(),
+            mettalexVault
         );
 
         IBalancer bPool = IBalancer(balancer);
