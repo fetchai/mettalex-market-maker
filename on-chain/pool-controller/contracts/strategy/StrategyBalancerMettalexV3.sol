@@ -37,7 +37,7 @@ contract StrategyBalancerMettalexV3 {
     uint256 public constant MAX_DIST_FEE = 10**18;
     uint256 public distFee = 0;
     uint256 public exitFee = 0;
-    uint256 public MAX_EXIT_FEE = 10**18;
+    uint256 public constant MAX_EXIT_FEE = 10**18;
 
     address public want;
     address public balancer;
@@ -291,7 +291,7 @@ contract StrategyBalancerMettalexV3 {
      * @dev isBreachHandled updated in updateCommodityAfterBreach() with same BPool and Strategy
      * but new position tokens and vault
      */
-    function handleBreach() public settled {
+    function handleBreach() internal settled {
         require(!breaker, "!breaker");
         if (!isBreachHandled) {
             isBreachHandled = true;
@@ -793,7 +793,7 @@ contract StrategyBalancerMettalexV3 {
         IBalancer bPool = IBalancer(balancer);
         uint256 distAmount = distFee.mul(tokenAmountIn).div(MAX_DIST_FEE);
         if ((distAmount != 0) && (distributionContract != address(0))) {
-            IERC20(want).safeTransferFrom(msg.sender, address(this), distAmount);
+            // IERC20(want).safeTransferFrom(msg.sender, address(this), distAmount);
             IERC20(want).safeTransfer(distributionContract, distAmount);
         }
         uint256 swapAmount = tokenAmountIn.sub(distAmount);
@@ -908,7 +908,7 @@ contract StrategyBalancerMettalexV3 {
         return totalValuation;
     }
 
-    function _depositInternal() private {
+    function _depositInternal() private returns (bool){
         // Get coin token balance and allocate half to minting position tokens
         uint256 wantBeforeMintandDeposit = IERC20(want).balanceOf(
             address(this)
@@ -933,7 +933,7 @@ contract StrategyBalancerMettalexV3 {
             balancerLtk.add(positionsExpected).add(strategyLtk) < 10**6 ||
             balancerStk.add(positionsExpected).add(strategyStk) < 10**6
         ) {
-            return;
+            return false;
         }
 
         _mintPositions(wantToVault);
@@ -990,5 +990,6 @@ contract StrategyBalancerMettalexV3 {
 
             _sortAndRebind(delta, wt, bal, tokens);
         }
+        return true;
     }
 }
