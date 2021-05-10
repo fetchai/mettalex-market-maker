@@ -132,6 +132,9 @@ def get_contracts(w3, strategy_version=1):
     StrategyHelper_build_file = Path(
         __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / 'StrategyHelper.json'
 
+    #reward contract
+    Reward_build_file = Path(
+        __file__).parent / ".." / 'mettalex-reward' / 'build' / 'contracts' / 'Reward.json'
 
     contracts = {
         'BFactory': create_contract(w3, bfactory_build_file),
@@ -145,7 +148,8 @@ def get_contracts(w3, strategy_version=1):
         'PoolController': create_contract(w3, pool_controller_build_file),
         'Bridge': create_contract(w3, bridge_build_file),
         'USDT': create_contract(w3, USDT_build_file),
-        'StrategyHelper': create_contract(w3, StrategyHelper_build_file)
+        'StrategyHelper': create_contract(w3, StrategyHelper_build_file),
+        'Reward': create_contract(w3, Reward_build_file)
     }
     return contracts
 
@@ -295,6 +299,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
     
     strategy_helper = deploy_contract(w3, contracts['StrategyHelper'])
 
+    reward = deploy_contract(w3,contracts['Reward'], USDT.address, w3.eth.accounts[5], 200, 0, 0, 100000)
+
     if (len(args['PoolController'])):
         strategy = deploy_contract(
             w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, args['PoolController'][0])
@@ -314,7 +320,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'PoolController': strategy.address,
         'Bridge': bridge.address,
         'USDT': USDT.address,
-        "StrategyHelper": strategy_helper.address
+        "StrategyHelper": strategy_helper.address,
+        'Reward': reward.address
     }
     with open(cache_file, 'w') as f:
         json.dump(contract_addresses, f)
@@ -331,7 +338,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'PoolController': strategy,
         'USDT':USDT,
         'Bridge': bridge,
-        "StrategyHelper": strategy_helper
+        "StrategyHelper": strategy_helper,
+        "Reward": reward
     }
     return deployed_contracts
 
@@ -748,7 +756,8 @@ def withdraw(w3, y_vault, amount, customAccount=None):
     acct = w3.eth.defaultAccount
     if customAccount:
         acct = customAccount
-    amount_unitless = amount * 10 ** (y_vault.functions.decimals().call())
+    amount_unitless = amount
+    # amount_unitless = amount * 10 ** (y_vault.functions.decimals().call())
     tx_hash = y_vault.functions.withdraw(amount_unitless).transact(
         {'from': acct, 'gas': 5_000_000}
     )
@@ -1044,6 +1053,7 @@ if __name__ == '__main__':
     bridge = deployed_contracts['Bridge']
     USDT = deployed_contracts['USDT']
     strategy_helper = deployed_contracts['StrategyHelper']
+    reawrd = deployed_contracts['Reward']
 
     reporter = BalanceReporter(w3, ltk, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
@@ -1051,4 +1061,8 @@ if __name__ == '__main__':
 
     # Print user balance
     # reporter.print_balances(admin, 'admin')
+    strategy.functions.setStrategyHelper(str(strategy_helper.address)).transact({'from': admin, 'gas': 1_000_000})
+    print(strategy_helper.address == strategy.functions.strategyHelper().call())
+    print(strategy_helper.address)
 
+    deposit(w3, y_vault, coin, 10e11)
