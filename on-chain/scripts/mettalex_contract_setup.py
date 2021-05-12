@@ -279,6 +279,7 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
     coin = deploy_contract(w3, contracts['Coin'], *args['Coin'])
     ltk = deploy_contract(w3, contracts['Long'], *args['Long'])
     stk = deploy_contract(w3, contracts['Short'], *args['Short'])
+    mtlx = deploy_contract(w3, contracts['Coin'], *args['Coin'])
 
     tok_version = args['Long'][3]
     cap = args['Vault'][0] * PRICE_SCALE
@@ -299,7 +300,7 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
     
     strategy_helper = deploy_contract(w3, contracts['StrategyHelper'])
 
-    reward = deploy_contract(w3,contracts['Reward'], USDT.address, w3.eth.accounts[5], 200, 0, 0, 100000)
+    reward = deploy_contract(w3,contracts['Reward'], mtlx.address, w3.eth.accounts[5], 200, 0, 0, 100000)
 
     if (len(args['PoolController'])):
         strategy = deploy_contract(
@@ -321,7 +322,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'Bridge': bridge.address,
         'USDT': USDT.address,
         "StrategyHelper": strategy_helper.address,
-        'Reward': reward.address
+        'Reward': reward.address,
+        'MTLX': mtlx.address
     }
     with open(cache_file, 'w') as f:
         json.dump(contract_addresses, f)
@@ -339,7 +341,8 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'USDT':USDT,
         'Bridge': bridge,
         "StrategyHelper": strategy_helper,
-        "Reward": reward
+        "Reward": reward,
+        "MTLX": mtlx
     }
     return deployed_contracts
 
@@ -1053,7 +1056,8 @@ if __name__ == '__main__':
     bridge = deployed_contracts['Bridge']
     USDT = deployed_contracts['USDT']
     strategy_helper = deployed_contracts['StrategyHelper']
-    reawrd = deployed_contracts['Reward']
+    reward = deployed_contracts['Reward']
+    mtlx = deployed_contracts['MTLX']
 
     reporter = BalanceReporter(w3, ltk, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
@@ -1065,4 +1069,16 @@ if __name__ == '__main__':
     print(strategy_helper.address == strategy.functions.strategyHelper().call())
     print(strategy_helper.address)
 
-    deposit(w3, y_vault, coin, 10e11)
+    #add a new pool
+    reward.functions.add(1, y_vault.address, False).transact({
+        'from': admin, 'gas': 1_000_000
+    })
+    print(reward.functions.poolLength().call())
+    print(mtlx.functions.balanceOf(admin).call())
+    
+    #transfer mtlx to contract
+    mtlx.functions.transfer(reward.address, 1560000000000000000000000000).transact({
+        'from': admin, 'gas': 1_000_000
+    })
+    print(mtlx.functions.balanceOf(admin).call())
+    print(mtlx.functions.balanceOf(reward.address).call())
