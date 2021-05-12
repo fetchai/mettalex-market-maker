@@ -810,8 +810,8 @@ def simulate_scenario(w3, admin, deployed_contracts=None):
     ltk = deployed_contracts["Long"]
     stk = deployed_contracts["Short"]
     vault = deployed_contracts["Vault"]
-    y_controller = deployed_contracts["YVault"]
-    y_vault = deployed_contracts["YController"]
+    y_vault = deployed_contracts["YVault"]
+    y_controller = deployed_contracts["YController"]
     strategy = deployed_contracts["PoolController"]
 
     reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
@@ -852,9 +852,13 @@ def simulate_scenario(w3, admin, deployed_contracts=None):
     reporter.print_balances(user3, 'User 3')
     reporter.print_balances(user4, 'User 4')
 
-    swap_amount_in(w3, balancer, ltk, 500, stk, user2, 100)
-    swap_amount_in(w3, balancer, stk, 500, ltk, user3, 100)
-    swap_amount_in(w3, balancer, ltk, 500, stk, user4, 100)
+    # swap_amount_in(w3, balancer, ltk, 500, stk, user2, 100)
+    # swap_amount_in(w3, balancer, stk, 500, ltk, user3, 100)
+    # swap_amount_in(w3, balancer, ltk, 500, stk, user4, 100)
+
+    swap(w3, strategy, ltk, int(500000), stk, user = user2)
+    swap(w3, strategy, stk, int(500000), ltk, user = user3)
+    swap(w3, strategy, ltk, int(500000), stk, user = user4)
 
     reporter.print_balances(y_vault.address, 'Y Vault')
     reporter.print_balances(balancer.address, 'Balancer AMM')
@@ -883,21 +887,26 @@ def update_oracle(w3, admin, vault, oracle, vault_address=None):
     print(vault.functions.oracle().call())
 
 
-def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
+def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1, user = None):
+    
+    if user == None:
+        print('swapping using default user')
+        user = w3.eth.defaultAccount
+
     # approve
     tx_hash = tokenIn.functions.approve(strategy.address, amountIn).transact(
-        {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
+        {'from': user, 'gas': 1_000_000}
     )
-    # time.sleep(5)
+
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # swap
     MAX_UINT_VALUE = 2**256 - 1
 
     tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut, MAX_UINT_VALUE).transact(
-        {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
+        {'from': user, 'gas': 5_000_000}
     )
-    # time.sleep(5)
+
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # amount of tokens received
@@ -1063,3 +1072,4 @@ if __name__ == '__main__':
     # Print user balance
     # reporter.print_balances(admin, 'admin')
 
+    simulate_scenario(w3, admin, deployed_contracts)
