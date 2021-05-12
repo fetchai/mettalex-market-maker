@@ -441,6 +441,11 @@ def connect_strategy(w3, address):
     return strategy
 
 
+def set_strategy_helper(w3, strategy, strategy_helper, acct=None):
+    strategy.functions.setStrategyHelper(str(strategy_helper.address)).transact(
+        {'from': acct, 'gas': 1_000_000})
+
+
 def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None):
     if deployed_contracts is None:
         print('Deploying contracts')
@@ -460,6 +465,10 @@ def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None):
     print('Setting Mettalex vault AMM')
     set_autonomous_market_maker(
         w3, deployed_contracts['Vault'], deployed_contracts['PoolController'])  # Zero fees for AMM
+    # Connect strategy helper to strategy
+    set_strategy_helper(
+        w3, deployed_contracts['PoolController'], deployed_contracts['StrategyHelper'], acct=admin
+    )
     if price is not None:
         # May be connecting to existing vault, if not then can set tht price here
         set_price(w3, deployed_contracts['Vault'], price)
@@ -788,8 +797,10 @@ def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=No
         f'Position tokens minted. Locked Coin: {collateralAmount} Minter: {acct}')
 
 
-def simulate_scenario(w3, admin):
-    w3, admin, deployed_contracts = full_setup(w3, admin)
+def simulate_scenario(w3, admin, deployed_contracts=None):
+    if deployed_contracts is None:
+        print('Deploying contracts')
+        w3, admin, deployed_contracts = full_setup(w3, admin)
 
     print('\nSystem Setup Completed\n')
 
@@ -1045,7 +1056,7 @@ if __name__ == '__main__':
     USDT = deployed_contracts['USDT']
     strategy_helper = deployed_contracts['StrategyHelper']
 
-    reporter = BalanceReporter(w3, ltk, ltk, stk, y_vault)
+    reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
 
 
