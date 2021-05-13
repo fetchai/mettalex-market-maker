@@ -69,13 +69,13 @@ def connect(network, account='user'):
         w3.eth.defaultAccount = admin.address
         w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
     elif is_ipv4_socket_address(network):
-            from web3 import Web3
-            w3 = Web3(Web3.HTTPProvider("http://" + network))
-            try:
-                w3.eth.defaultAccount = w3.eth.accounts[0]
-                admin = w3.eth.accounts[0]
-            except:
-                raise Exception("Ensure ganache-cli is connected")
+        from web3 import Web3
+        w3 = Web3(Web3.HTTPProvider("http://" + network))
+        try:
+            w3.eth.defaultAccount = w3.eth.accounts[0]
+            admin = w3.eth.accounts[0]
+        except:
+            raise Exception("Ensure ganache-cli is connected")
     else:
         raise ValueError(f'Unknown network {network}')
 
@@ -103,10 +103,10 @@ def get_contracts(w3, strategy_version=1):
         __file__).parent / ".." / 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
     # USDT
     USDT_build_file = Path(__file__).parent / ".." / 'mettalex-coin' / \
-        'build' / 'contracts' / 'TetherToken.json'
+                      'build' / 'contracts' / 'TetherToken.json'
     # Use Mettalex vault version of CoinToken rather than USDT in mettalex-coin to avoid Solidity version issue
     coin_build_file = Path(__file__).parent / ".." / 'mettalex-vault' / \
-        'build' / 'contracts' / 'CoinToken.json'
+                      'build' / 'contracts' / 'CoinToken.json'
     # Use position token for both long and short tokens
     position_build_file = Path(
         __file__).parent / ".." / 'mettalex-vault' / 'build' / 'contracts' / 'PositionToken.json'
@@ -124,14 +124,12 @@ def get_contracts(w3, strategy_version=1):
     pool_controller_build_file = Path(
         __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / build_file_name
 
-    #bridge contract
+    # bridge contract
     bridge_build_file = Path(
         __file__).parent / ".." / 'mettalex-bridge' / 'build' / 'contracts' / 'Bridge.json'
 
-
     StrategyHelper_build_file = Path(
         __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / 'StrategyHelper.json'
-
 
     contracts = {
         'BFactory': create_contract(w3, bfactory_build_file),
@@ -186,7 +184,7 @@ def connect_contract(w3, contract, address):
 
 def connect_deployed(w3, contracts, contract_file_name='contract_address.json', cache_file_name='contract_cache.json'):
     contract_file = Path(__file__).parent / \
-        'contract-cache' / contract_file_name
+                    'contract-cache' / contract_file_name
     cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
 
     if not os.path.isfile(contract_file):
@@ -223,7 +221,7 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
 
             elif k == 'Bridge':
                 deployed_contracts[k] = deploy_contract(
-                    w3, contracts[k], contract_cache['USDT'], contract_cache['Coin'], 100, 10000*(10**6) , 10)
+                    w3, contracts[k], contract_cache['USDT'], contract_cache['Coin'], 100, 10000 * (10 ** 6), 10)
 
             elif k == 'YVault':
                 deployed_contracts[k] = deploy_contract(
@@ -231,7 +229,8 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
 
             elif k == 'PoolController':
                 deployed_contracts[k] = deploy_contract(
-                    w3, contracts[k], contract_cache['YController'], contract_cache['Coin'], contract_cache['BPool'], contract_cache['Vault'], contract_cache['Long'], contract_cache['Short'])
+                    w3, contracts[k], contract_cache['YController'], contract_cache['Coin'], contract_cache['BPool'],
+                    contract_cache['Vault'], contract_cache['Long'], contract_cache['Short'])
             elif k == 'Vault':
                 tok_version = args['Long'][3]
                 cap = args['Vault'][0] * PRICE_SCALE
@@ -242,8 +241,11 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
                 oracle = args['Vault'][5]
                 if not oracle:
                     oracle = account
-                deployed_contracts[k] = deploy_contract(w3, contracts[k], vault_name, tok_version, contract_cache['Coin'], contract_cache['Long'], contract_cache['Short'],
-                                                        oracle, contract_cache['BPool'], cap, floor, multiplier, fee_rate)
+                deployed_contracts[k] = deploy_contract(w3, contracts[k], vault_name, tok_version,
+                                                        contract_cache['Coin'], contract_cache['Long'],
+                                                        contract_cache['Short'],
+                                                        oracle, contract_cache['BPool'], cap, floor, multiplier,
+                                                        fee_rate)
             else:
                 deployed_contracts[k] = deploy_contract(
                     w3, contracts[k], *args[k])
@@ -286,21 +288,23 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'Mettalex Vault', tok_version, coin.address, ltk.address, stk.address,
         account, balancer.address, cap, floor, multiplier, feeRate)
 
-    #Bridge
-    bridge = deploy_contract(w3, contracts['Bridge'], USDT.address, coin.address, 100, 10000*(10**6) , 10)
+    # Bridge
+    bridge = deploy_contract(w3, contracts['Bridge'], USDT.address, coin.address, 100, 10000 * (10 ** 6), 10)
     # Liquidity Provider
     y_controller = deploy_contract(w3, contracts['YController'], account)
     y_vault = deploy_contract(
         w3, contracts['YVault'], coin.address, y_controller.address)
-    
+
     strategy_helper = deploy_contract(w3, contracts['StrategyHelper'])
 
     if (len(args['PoolController'])):
         strategy = deploy_contract(
-            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, args['PoolController'][0])
+            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address,
+            ltk.address, stk.address, args['PoolController'][0])
     else:
         strategy = deploy_contract(
-            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, coin.address)
+            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address,
+            ltk.address, stk.address, coin.address)
 
     contract_addresses = {
         'BFactory': balancer_factory.address,
@@ -329,7 +333,7 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'YVault': y_vault,
         'YController': y_controller,
         'PoolController': strategy,
-        'USDT':USDT,
+        'USDT': USDT,
         'Bridge': bridge,
         "StrategyHelper": strategy_helper
     }
@@ -354,7 +358,7 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
 
 def connect_balancer(w3):
     build_file = Path(__file__).parent / ".." / \
-        'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
+                 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
     with open(build_file, 'r') as f:
         contract_details = json.load(f)
 
@@ -400,7 +404,6 @@ def upgrade_strategy(w3, contracts, strategy, y_controller, coin, balancer, vaul
 
 
 def upgrade_strategy_v2(w3, contracts, strategy, y_controller, coin, balancer, vault, ltk, stk):
-
     # Create instance of new strategy
     pool_controller_build_file = Path(
         __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / 'StrategyBalancerMettalexV2.json'
@@ -431,7 +434,7 @@ def upgrade_strategy_v2(w3, contracts, strategy, y_controller, coin, balancer, v
 
 def connect_strategy(w3, address):
     build_file = Path(__file__).parent / ".." / 'pool-controller' / \
-        'build' / 'contracts' / 'StrategyBalancerMettalex.json'
+                 'build' / 'contracts' / 'StrategyBalancerMettalex.json'
     with open(build_file, 'r') as f:
         contract_details = json.load(f)
 
@@ -612,7 +615,7 @@ def print_mettalex_vault(w3, contracts, address=None):
         f'Floor: {res["floor"]}, Cap: {res["cap"]} -> Collateral Per Unit {res["cpu"]}')
     coin_dp = res["coin"].functions.decimals().call()
     ltok_dp = res["ltok"].functions.decimals().call()
-    cpu_ticks = res["cpu"] * 10**(ltok_dp - coin_dp)
+    cpu_ticks = res["cpu"] * 10 ** (ltok_dp - coin_dp)
     print(f'Dollar value of 1 position token pair = {cpu_ticks}')
     print(f'Current spot price: {res["spot"]}')
     print(f'Long token spot price: {res["spot"] - res["floor"]}')
@@ -747,9 +750,9 @@ def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=Fa
     if not unitless:
         # Take decimals into account
         spot_price = spot_price * 10 ** (
-            tok_out.functions.decimals().call()
-            - tok_in.functions.decimals().call()
-            - 18)
+                tok_out.functions.decimals().call()
+                - tok_in.functions.decimals().call()
+                - 18)
     return spot_price
 
 
@@ -783,7 +786,7 @@ def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=No
     if customAccount:
         acct = customAccount
     collateralAmount_unitless = collateralAmount * \
-        10 ** (coin.functions.decimals().call())
+                                10 ** (coin.functions.decimals().call())
     tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
         {'from': acct, 'gas': 5_000_000}
     )
@@ -810,8 +813,8 @@ def simulate_scenario(w3, admin, deployed_contracts=None):
     ltk = deployed_contracts["Long"]
     stk = deployed_contracts["Short"]
     vault = deployed_contracts["Vault"]
-    y_controller = deployed_contracts["YVault"]
-    y_vault = deployed_contracts["YController"]
+    y_vault = deployed_contracts["YVault"]
+    y_controller = deployed_contracts["YController"]
     strategy = deployed_contracts["PoolController"]
 
     reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
@@ -852,9 +855,13 @@ def simulate_scenario(w3, admin, deployed_contracts=None):
     reporter.print_balances(user3, 'User 3')
     reporter.print_balances(user4, 'User 4')
 
-    swap_amount_in(w3, balancer, ltk, 500, stk, user2, 100)
-    swap_amount_in(w3, balancer, stk, 500, ltk, user3, 100)
-    swap_amount_in(w3, balancer, ltk, 500, stk, user4, 100)
+    # swap_amount_in(w3, balancer, ltk, 500, stk, user2, 100)
+    # swap_amount_in(w3, balancer, stk, 500, ltk, user3, 100)
+    # swap_amount_in(w3, balancer, ltk, 500, stk, user4, 100)
+
+    swap(w3, strategy, ltk, int(500000), stk, user=user2)
+    swap(w3, strategy, stk, int(500000), ltk, user=user3)
+    swap(w3, strategy, ltk, int(500000), stk, user=user4)
 
     reporter.print_balances(y_vault.address, 'Y Vault')
     reporter.print_balances(balancer.address, 'Balancer AMM')
@@ -883,21 +890,26 @@ def update_oracle(w3, admin, vault, oracle, vault_address=None):
     print(vault.functions.oracle().call())
 
 
-def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
+def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1, user=None):
+    if user == None:
+        print('swapping using default user')
+        user = w3.eth.defaultAccount
+
     # approve
     tx_hash = tokenIn.functions.approve(strategy.address, amountIn).transact(
-        {'from': w3.eth.defaultAccount, 'gas': 1_000_000}
+        {'from': user, 'gas': 1_000_000}
     )
-    # time.sleep(5)
+
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # swap
-    MAX_UINT_VALUE = 2**256 - 1
+    MAX_UINT_VALUE = 2 ** 256 - 1
 
-    tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut, MAX_UINT_VALUE).transact(
-        {'from': w3.eth.defaultAccount, 'gas': 5_000_000}
+    tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut,
+                                                   MAX_UINT_VALUE).transact(
+        {'from': user, 'gas': 5_000_000}
     )
-    # time.sleep(5)
+
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
 
     # amount of tokens received
@@ -908,9 +920,9 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1):
 
 
 def get_balance(address, coin, ltk, stk):
-    stk_balance = stk.functions.balanceOf(address).call()/10**5
-    ltk_balance = ltk.functions.balanceOf(address).call()/10**5
-    coin_balance = coin.functions.balanceOf(address).call()/10**6
+    stk_balance = stk.functions.balanceOf(address).call() / 10 ** 5
+    ltk_balance = ltk.functions.balanceOf(address).call() / 10 ** 5
+    coin_balance = coin.functions.balanceOf(address).call() / 10 ** 6
     print(f'Coin: {coin_balance}, Long: {ltk_balance} and Short: {stk_balance}')
     return stk_balance, ltk_balance, coin_balance
 
@@ -984,7 +996,6 @@ def handle_breach(w3, strategy):
 
 
 def get_pool_details(strategy, coin, ltk, stk):
-
     coin_is_bound = strategy.functions.isBound(coin.address).call()
     ltk_is_bound = strategy.functions.isBound(ltk.address).call()
     stk_is_bound = strategy.functions.isBound(stk.address).call()
@@ -1007,10 +1018,18 @@ def redeem(w3, vault, amount):
         {'from': acct, 'gas': 1_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-    tx_receipt.gasUsed
+
 
 def is_ipv4_socket_address(network):
-    return re.match(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",network)
+    return re.match(
+        r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",
+        network)
+
+
+def run_simulation(name, w3, admin, deployed_contracts):
+    if name == 'swap':
+        simulate_scenario(w3, admin, deployed_contracts)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Mettalex System Setup')
@@ -1023,8 +1042,12 @@ if __name__ == '__main__':
         help='For connecting to local, kovan, bsc-testnet or bsc-mainnet network'
     )
     parser.add_argument(
-        '--strategy', '-v', dest='strategy', default=1,
+        '--strategy', '-v', dest='strategy', default=3,
         help='For getting strategy version we want to deploy DEX for'
+    )
+    parser.add_argument(
+        '--simulation', '-s', dest='simulation', default='none',
+        help=''
     )
 
     args = parser.parse_args()
@@ -1059,7 +1082,4 @@ if __name__ == '__main__':
     reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
 
-
-    # Print user balance
-    # reporter.print_balances(admin, 'admin')
-
+    run_simulation(args.simulation, w3, admin, deployed_contracts)
