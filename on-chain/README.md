@@ -74,7 +74,7 @@ If the address left blank, it will be automatically deployed by the script.
     Action to perform: connect, deploy (default), setup
 
     --network NETWORK, -n NETWORK
-    For connecting to local, kovan or bsc-testnet network
+    For connecting to local, kovan, polygon-testnet, harmony-testnet, okexchain-testnet, avalanche-testnet or bsc-testnet network
 
     --strategy STRATEGY, -v STRATEGY
     For getting strategy version we want to deploy DEX for

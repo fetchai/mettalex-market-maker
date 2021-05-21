@@ -87,11 +87,11 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--network', '-n', dest='network', default='local',
-        help='For connecting to local, kovan or bsc-testnet network'
+        help='For connecting to local, kovan, polygon-testnet, harmony-testnet, okexchain-testnet, avalanche-testnet or bsc-testnet network'
     )
 
     args = parser.parse_args()
-    assert args.network in {'local', 'kovan', 'bsc-testnet'}
+    assert args.network in {'local', 'kovan', 'bsc-testnet', 'polygon', 'polygon-testnet', 'harmony-testnet', 'okexchain-testnet', 'avalanche-testnet'}
 
     w3, admin = connect(args.network, 'admin')
     contracts = get_contracts(w3)
