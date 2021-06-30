@@ -387,59 +387,61 @@ describe("Strategy", () => {
   //   })
 
   // calling full withdraw from yController
-  it("calling full withdraw using governance proceeding with user withdraw", async () => {
-    // checking no. of shares with user
-    expect(await this.yearn.balanceOf(user)).to.be.bignumber.equal(
-      new BN(depositAmount)
-    );
 
-    // withdraw all
-    await this.yController.withdrawAll(want, { from: governance });
+  //withdrawall would be called only while migrating to new strategy
+  // it("calling full withdraw using governance proceeding with user withdraw", async () => {
+  //   // checking no. of shares with user
+  //   expect(await this.yearn.balanceOf(user)).to.be.bignumber.equal(
+  //     new BN(depositAmount)
+  //   );
 
-    // update withdraw amount
-    withdraw = depositAmount / 2;
+  //   // withdraw all
+  //   await this.yController.withdrawAll(want, { from: governance });
 
-    // user balance
-    wantBal = Number(await this.want.balanceOf(user));
-    shareBal = Number(await this.yearn.balanceOf(user));
-    // withdraw some usdt from strategy contract
-    await this.yearn.withdraw(withdraw, { from: user });
+  //   // update withdraw amount
+  //   withdraw = depositAmount / 2;
 
-    // checking no. of shares with user
-    expect(await this.yearn.balanceOf(user)).to.be.bignumber.equal(
-      new BN(shareBal - withdraw)
-    );
+  //   // user balance
+  //   wantBal = Number(await this.want.balanceOf(user));
+  //   shareBal = Number(await this.yearn.balanceOf(user));
+  //   // withdraw some usdt from strategy contract
+  //   await this.yearn.withdraw(withdraw, { from: user });
 
-    // To be reviewed
+  //   // checking no. of shares with user
+  //   expect(await this.yearn.balanceOf(user)).to.be.bignumber.equal(
+  //     new BN(shareBal - withdraw)
+  //   );
 
-    // // checking user want balance
-    // expect(
-    //   await this.want.balanceOf(user)
-    // ).to.be.bignumber.equal(new BN(wantBal + withdraw))
+  //   // To be reviewed
 
-    // updating deposit amount
-    depositAmount = depositAmount - withdraw;
-  });
+  //   // // checking user want balance
+  //   // expect(
+  //   //   await this.want.balanceOf(user)
+  //   // ).to.be.bignumber.equal(new BN(wantBal + withdraw))
+
+  //   // updating deposit amount
+  //   depositAmount = depositAmount - withdraw;
+  // });
 
   // implementing withdraw scenario
-  it("full amount withdraw scenario after governance withthdraws all usdt", async () => {
-    // getting new supply
-    // supply = await this.strategy.supply();
+  // it("full amount withdraw scenario after governance withthdraws all usdt", async () => {
+  //   // getting new supply
+  //   // supply = await this.strategy.supply();
 
-    // checking no. of shares with user
-    expect((x = await this.yearn.balanceOf(user))).to.be.bignumber.equal(
-      new BN(depositAmount)
-    );
+  //   // checking no. of shares with user
+  //   expect((x = await this.yearn.balanceOf(user))).to.be.bignumber.equal(
+  //     new BN(depositAmount)
+  //   );
 
-    // update withdraw amount
-    withdraw = depositAmount;
+  //   // update withdraw amount
+  //   withdraw = depositAmount;
 
-    // withdraw all usdt from strategy contract
-    await this.yearn.withdraw(withdraw, { from: user });
+  //   // withdraw all usdt from strategy contract
+  //   await this.yearn.withdraw(withdraw, { from: user });
 
-    // checking no. of shares with user
-    expect(await this.yearn.balanceOf(user)).to.be.bignumber.equal(new BN("0"));
-  });
+  //   // checking no. of shares with user
+  //   expect(await this.yearn.balanceOf(user)).to.be.bignumber.equal(new BN("0"));
+  // });
 
   // updating swapFee
   it("updating swap fee", async () => {
@@ -539,5 +541,128 @@ describe("Strategy", () => {
     this.strategy.setGovernance(accounts[9], { from: governance });
 
     expect(await this.strategy.governance()).to.be.equal(accounts[9]);
+  });
+
+  it("checking to set a new distribution address", async () => {
+    // setting through user should fail
+    await expectRevert(
+      this.strategy.setDistributionContract(accounts[8], { from: user }),
+      "!governance"
+    );
+
+    //setting should be through governance
+    this.strategy.setDistributionContract(accounts[8],{from: governance})
+
+    expect(await this.strategy.distributionContract()).to.be.equal(accounts[8]);
+    
+    // console.log((await this.want.balanceOf(accounts[8])).toString());
+  });
+
+  it("checking to set a new swap fee of 1% and dist fee of 1%", async () => {
+    // setting through user should fail
+    // await expectRevert(
+    //   await this.strategy.setSwapFee(new BN(1000000 * Math.pow(10, wDecimals)), {
+    //     from: user
+    //   }),"!governance");
+
+    // //setting should be through governance
+    // this.strategy.setSwapFee(new BN(1 * Math.pow(10, 16)),{from: governance})
+
+
+    await this.strategy.setSwapFee(new BN(Math.pow(10, 16).toString()), {
+      from: governance
+    });
+
+    // get swap fee
+    expect((x = await this.strategy.getSwapFee())).to.be.bignumber.equal(
+      new BN(Math.pow(10, 16).toString())
+    );
+    
+
+    await this.strategy.setDistFee(new BN(Math.pow(10, 16).toString()), {
+      from: governance
+    });
+
+    // get dist fee
+    expect((x = await this.strategy.distFee())).to.be.bignumber.equal(
+      new BN(Math.pow(10, 16).toString())
+    );
+  });
+
+
+  it("swapping should transfer want to dist address", async () => {
+
+    // defining max value
+    MAX_UINT_VALUE = constants.MAX_UINT256;
+    prevBal = await this.want.balanceOf(
+      await this.strategy.distributionContract()
+    );
+    var MAX_DIST_FEE = await this.strategy.MAX_DIST_FEE();
+    var dist_fee = await this.strategy.distFee();
+
+
+
+    // swapping usdt with long
+    await this.want.approve(
+      addresses.PoolController,
+      1000 * Math.pow(10, wDecimals),
+      { from: user }
+    );
+    await this.strategy.swapExactAmountIn(
+      want,
+      1000 * Math.pow(10, wDecimals),
+      addresses.Long,
+      1,
+      MAX_UINT_VALUE,
+      { from: user }
+    );
+    // console.log(dist_fee/MAX_DIST_FEE);
+    exp =parseInt(1000 * Math.pow(10, wDecimals) * dist_fee / MAX_DIST_FEE);
+    expect(
+      Number(
+        (await this.want.balanceOf(await this.strategy.distributionContract())).toString())
+         - prevBal)
+      .to.be.equal(exp);
+
+    prevBal = Number((await this.want.balanceOf(await this.strategy.distributionContract())).toString())
+
+
+
+    amt = await this.strategy.getExpectedOutAmount(
+      addresses.Long,
+      want,
+      (await this.long.balanceOf(user)).toString()
+    )
+
+    // swapping long with usdt
+    await this.long.approve(
+      addresses.PoolController,
+      (await this.long.balanceOf(user)).toString(),
+      { from: user }
+    );
+    await this.strategy.swapExactAmountIn(
+      addresses.Long,
+      (await this.long.balanceOf(user)).toString(),
+      want,
+      1,
+      MAX_UINT_VALUE,
+      { from: user }
+    );
+
+
+    console.log(amt.tokensReturned.toString());
+
+    console.log(
+      (await this.want.balanceOf(await this.strategy.distributionContract())).toString()
+      - prevBal
+    );
+
+    expect(
+      Number(
+        (await this.want.balanceOf(await this.strategy.distributionContract())).toString())
+         - prevBal)
+      .to.be.greaterThan(0);
+
+
   });
 });
