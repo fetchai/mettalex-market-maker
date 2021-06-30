@@ -291,7 +291,7 @@ contract StrategyBalancerMettalexV3 {
      * @dev isBreachHandled updated in updateCommodityAfterBreach() with same BPool and Strategy
      * but new position tokens and vault
      */
-    function handleBreach() internal settled {
+    function handleBreach() public settled {
         require(!breaker, "!breaker");
         if (!isBreachHandled) {
             isBreachHandled = true;
