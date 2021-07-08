@@ -157,6 +157,36 @@ def create_contract(w3, build_file):
     return contract
 
 
+def get_contracts_from_build_json(w3, build_file):
+    """
+        Create web3 contract objects from json file containing
+        dict of {contract: {abi: ..., bytecode: ...}}
+    """
+    with open(build_file, 'r') as f:
+        build = json.load(f)
+
+    components = {
+        'BFactory': 'balancer_factory',
+        'BPool': 'balancer_pool',
+        'Coin': 'coin',
+        'Long': 'position',
+        'Short': 'position',
+        'Vault': 'vault',
+        'YController': 'y_controller',
+        'YVault': 'y_vault',
+        'PoolController': 'pool_controller',
+        # 'Bridge': create_contract(w3, bridge_build_file),
+        # 'USDT': create_contract(w3, USDT_build_file),
+        'StrategyHelper': 'strategy_helper'
+    }
+
+    contracts = {
+        k: w3.eth.contract(abi=build[v]['abi'], bytecode=build[v]['bytecode'])
+        for k, v in components.items()
+    }
+    return contracts
+
+
 def deploy_contract(w3, contract, *args):
     tx_hash = contract.constructor(*args).transact()
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
@@ -182,7 +212,8 @@ def connect_contract(w3, contract, address):
     return deployed_contract
 
 
-def connect_deployed(w3, contracts, contract_file_name='contract_address.json', cache_file_name='contract_cache.json'):
+def connect_deployed(w3, contracts, contract_file_name='contract_address.json', cache_file_name='contract_cache.json',
+                     args_file_name='args.json'):
     contract_file = Path(__file__).parent / \
                     'contract-cache' / contract_file_name
     cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
@@ -190,11 +221,11 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
     if not os.path.isfile(contract_file):
         print('No address file')
         return
-    if not os.path.isfile('args.json'):
+    if not os.path.isfile(args_file_name):
         print('No args file')
         return
 
-    with open('args.json', 'r') as f:
+    with open(args_file_name, 'r') as f:
         args = json.load(f)
     with open(cache_file, 'r') as f:
         contract_cache = json.load(f)
@@ -256,22 +287,20 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
     return deployed_contracts
 
 
-def deploy(w3, contracts, cache_file_name='contract_cache.json'):
+def deploy(w3, contracts, cache_file_name='contract_cache.json', args_file_name='args.json'):
     cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
     account = w3.eth.defaultAccount
 
-    if not os.path.isfile('args.json'):
+    if not os.path.isfile(args_file_name):
         print('No args file')
         return
 
-    with open('args.json', 'r') as f:
+    with open(args_file_name, 'r') as f:
         args = json.load(f)
 
     # Balancer
     balancer_factory = deploy_contract(w3, contracts['BFactory'])
     balancer = create_balancer_pool(w3, contracts['BPool'], balancer_factory)
-
-    USDT = deploy_contract(w3, contracts['USDT'], *args['USDT'])
 
     # Mettalex Coin and Vault
     coin = deploy_contract(w3, contracts['Coin'], *args['Coin'])
@@ -288,8 +317,6 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'Mettalex Vault', tok_version, coin.address, ltk.address, stk.address,
         account, balancer.address, cap, floor, multiplier, feeRate)
 
-    # Bridge
-    bridge = deploy_contract(w3, contracts['Bridge'], USDT.address, coin.address, 100, 10000 * (10 ** 6), 10)
     # Liquidity Provider
     y_controller = deploy_contract(w3, contracts['YController'], account)
     y_vault = deploy_contract(
@@ -316,10 +343,17 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'YVault': y_vault.address,
         'YController': y_controller.address,
         'PoolController': strategy.address,
-        'Bridge': bridge.address,
-        'USDT': USDT.address,
         "StrategyHelper": strategy_helper.address
     }
+
+    deploy_bridge = ('USDT' in contracts) and ('Bridge' in contracts)
+    if deploy_bridge:
+        USDT = deploy_contract(w3, contracts['USDT'], *args['USDT'])
+        # Bridge
+        bridge = deploy_contract(w3, contracts['Bridge'], USDT.address, coin.address, 100, 10000 * (10 ** 6), 10)
+        contract_addresses['Bridge'] = bridge.address
+        contract_addresses['USDT'] =  USDT.address
+
     with open(cache_file, 'w') as f:
         json.dump(contract_addresses, f)
 
@@ -333,10 +367,13 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
         'YVault': y_vault,
         'YController': y_controller,
         'PoolController': strategy,
-        'USDT': USDT,
-        'Bridge': bridge,
         "StrategyHelper": strategy_helper
     }
+
+    if deploy_bridge:
+        deployed_contracts['USDT'] = USDT
+        deployed_contracts['Bridge'] = bridge
+
     return deployed_contracts
 
 
@@ -449,10 +486,10 @@ def set_strategy_helper(w3, strategy, strategy_helper, acct=None):
         {'from': acct, 'gas': 1_000_000})
 
 
-def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None):
+def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None, args_file_name='args.json'):
     if deployed_contracts is None:
         print('Deploying contracts')
-        deployed_contracts = deploy(w3, contracts)
+        deployed_contracts = deploy(w3, contracts, args_file_name=args_file_name)
     print('Whitelisting Mettalex vault to mint position tokens')
     whitelist_vault(
         w3, deployed_contracts['Vault'], deployed_contracts['Long'], deployed_contracts['Short'])
@@ -473,9 +510,39 @@ def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None):
         w3, deployed_contracts['PoolController'], deployed_contracts['StrategyHelper'], acct=admin
     )
     if price is not None:
-        # May be connecting to existing vault, if not then can set tht price here
+        # May be connecting to existing vault, if not then can set the price here
         set_price(w3, deployed_contracts['Vault'], price)
     return w3, admin, deployed_contracts
+
+
+def create_deployment_json(out_file, deployed_contracts):
+    # Mapping from names used in deployment to more pythonic version
+    # for brownie use
+    components = {
+        'BFactory': 'balancer_factory',
+        'BPool': 'balancer_pool',
+        'Coin': 'coin',
+        'Long': 'long',
+        'Short': 'short',
+        'Vault': 'vault',
+        'YController': 'y_controller',
+        'YVault': 'y_vault',
+        'PoolController': 'pool_controller',
+        # 'Bridge': create_contract(w3, bridge_build_file),
+        # 'USDT': create_contract(w3, USDT_build_file),
+        'StrategyHelper': 'strategy_helper'
+    }
+    deployed_dict = {
+        v: {
+            'address': deployed_contracts[k].address,
+            'abi': deployed_contracts[k].abi,
+        }
+        for k, v in components.items()
+    }
+
+    with open(out_file, 'w') as f:
+        json.dump(deployed_dict, f)
+    return deployed_dict
 
 
 def whitelist_vault(w3, vault, ltk, stk):
@@ -939,13 +1006,13 @@ def update_spot_and_rebalance(w3, vault, strategy, price):
     )
 
 
-def after_breach_setup(w3, contracts, coin, balancer, strategy, price=None):
+def after_breach_setup(w3, contracts, coin, balancer, strategy, price=None, args_file_name='args.json'):
     account = w3.eth.defaultAccount
-    if not os.path.isfile('args.json'):
+    if not os.path.isfile(args_file_name):
         print('No args file')
         return
 
-    with open('args.json', 'r') as f:
+    with open(args_file_name, 'r') as f:
         args = json.load(f)
 
     # contract deployment:
@@ -1042,12 +1109,28 @@ if __name__ == '__main__':
         help='For connecting to local, kovan, bsc-testnet or bsc-mainnet network'
     )
     parser.add_argument(
-        '--strategy', '-v', dest='strategy', default=3,
+        '--strategy', '-v', dest='strategy', default='3',
         help='For getting strategy version we want to deploy DEX for'
     )
     parser.add_argument(
         '--simulation', '-s', dest='simulation', default='none',
         help=''
+    )
+    parser.add_argument(
+        '--initial_spot', '-p', dest='initial_spot', default='2500',
+        help='Initial spot price for commodity, default 2500 i.e. 250.0 (1 dp precision)'
+    )
+    parser.add_argument(
+        '--args_file', '-i', dest='args_file', default='args.json',
+        help='Deployment parameter arguments file, default args.json'
+    )
+    parser.add_argument(
+        '--json_build', '-j', dest='json_build_file', default='none',
+        help='Setup from json file containing all ABI and bytecode'
+    )
+    parser.add_argument(
+        '--out_file', '-o', dest='out_file', default='none',
+        help='Generate output file of component, address, ABI for use with Brownie'
     )
 
     args = parser.parse_args()
@@ -1055,16 +1138,28 @@ if __name__ == '__main__':
     assert args.strategy in {'1', '2', '3', '4'}
 
     w3, admin = connect(args.network, 'admin')
-    contracts = get_contracts(w3, int(args.strategy))
+    if args.json_build_file == 'none':
+        # Get contracts from local build directories
+        contracts = get_contracts(w3, int(args.strategy))
+    else:
+        # Use json file containing ABI and bytecodes for all components
+        contracts = get_contracts_from_build_json(w3, args.json_build_file)
 
     if args.action == 'deploy':
-        deployed_contracts = deploy(w3, contracts)
+        deployed_contracts = deploy(w3, contracts, args_file_name=args.args_file)
     elif args.action == 'connect':
-        deployed_contracts = connect_deployed(w3, contracts)
+        deployed_contracts = connect_deployed(w3, contracts, args_file_name=args.args_file)
     elif args.action == 'setup':
         #  will deploy and do the full setup
+        try:
+            initial_spot = int(args.initial_spot)
+        except ValueError():
+            initial_spot = None
+        print(initial_spot)
         w3, admin, deployed_contracts = full_setup(
-            w3, admin, contracts=contracts, price=2500)
+            w3, admin, contracts=contracts, price=initial_spot,
+            args_file_name=args.args_file
+        )
     else:
         raise ValueError(f'Unknown action: {args.action}')
 
@@ -1075,11 +1170,17 @@ if __name__ == '__main__':
     balancer = deployed_contracts['BPool']
     y_vault = deployed_contracts['YVault']
     strategy = deployed_contracts['PoolController']
-    bridge = deployed_contracts['Bridge']
-    USDT = deployed_contracts['USDT']
     strategy_helper = deployed_contracts['StrategyHelper']
+
+    if 'Brdige' in deployed_contracts:
+        bridge = deployed_contracts['Bridge']
+    if 'USDT' in deployed_contracts:
+        USDT = deployed_contracts['USDT']
 
     reporter = BalanceReporter(w3, coin, ltk, stk, y_vault)
     reporter.print_balances(y_vault.address, 'Y Vault')
 
     run_simulation(args.simulation, w3, admin, deployed_contracts)
+
+    if args.out_file != 'none':
+        deployed_dict = create_deployment_json(args.out_file, deployed_contracts)

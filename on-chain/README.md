@@ -67,20 +67,26 @@ From this directory the `scripts/mettalex_contract_setup.py` script deploys or c
 We can provide the contract addresses to `scripts/contract-cache/contract_address.json` if we want to connect the existing contracts.
 If the address left blank, it will be automatically deployed by the script.
 ### Script options:
-    -h, --help            
-    show this help message and exit
-
+    -h, --help            show this help message and exit
     --action ACTION, -a ACTION
-    Action to perform: connect, deploy (default), setup
-
+                          Action to perform: connect, deploy (default), setup
     --network NETWORK, -n NETWORK
-    For connecting to local, kovan or bsc-testnet network
-
+                          For connecting to local, kovan, bsc-testnet or bsc-mainnet network
     --strategy STRATEGY, -v STRATEGY
-    For getting strategy version we want to deploy DEX for
+                          For getting strategy version we want to deploy DEX for
+    --simulation SIMULATION, -s SIMULATION
+    --initial_spot INITIAL_SPOT, -p INITIAL_SPOT
+                          Initial spot price for commodity, default 2500 i.e. 250.0 (1 dp precision)
+    --args_file ARGS_FILE, -i ARGS_FILE
+                          Deployment parameter arguments file, default args.json
+    --json_build JSON_BUILD_FILE, -j JSON_BUILD_FILE
+                          Setup from json file containing all ABI and bytecode
+    --out_file OUT_FILE, -o OUT_FILE
+                          Generate output file of component, address, ABI for use with Brownie
 
 
-For using strategy V2, we use 2 with `-v` option. 
+
+For using strategy V3, we use 3 with `-v` option. 
 
 ### Output:
 
@@ -161,3 +167,39 @@ For full and final setup, following trasnactions are performed:
 * Strategy address is added to the controller contract.
 * To connect the Balancer pool, bpool controller is replaced by Strategy contract from admin account.
 * To allow the AMM to mint Long and Short tokens, the autonomous market maker address is updated in Vault contract
+
+
+## Local testing cloning deployed commodities 
+Testing a local copy of already deployed commodities can be useful to debug issues.
+The `clone_commodity.py` module has functions that allow the user to connect to an existing
+commodity deployed on local, kovan, or bsc-mainnet using the address of the liquidity pool
+to retrieve all components.
+
+From within an ipython console:
+
+    from clone_commodity import connect, get_commodity, create_ctor_args, create_deployment_json
+    w3, user = connect('bsc-mainnet', 'user')
+    commodity = get_commodity(w3, '0x05f53BfC0a757d1057108EF585507ED5e171EE2d')
+    # Generate args file for creating local commodity with same parameters
+    create_ctor_args(commodity, 'args_dpc108.json')   # Commodity symbol used in name
+    # AND/OR Generate json file for use with Brownie testing
+    deployment = create_deployment_json(commodity, 'brownie_mettalex/bsc_mainnet_dpc108.json')
+
+For local testing in one terminal start the ganache chain then in a second terminal do:
+
+    python mettalex_contract_setup.py -n local -a setup \
+    -j deployed/729c4df56d28af211ed4c6f55c1d47c04a80ee96.json \
+    -i args_dpc108.json -o brownie_mettalex/local_deployment_dpc108.json -p 5000
+
+
+Changing directory to scripts/brownie_mettalex then allows testing from console:
+
+    brownie console
+    >>> from scripts.connect_deployed import main
+    >>> contracts, actors = main('local_deployment_dpc108.json')
+
+or connecting to existing deployed contracts:
+
+    brownie console --network bsc-main
+    >>> from scripts.connect_deployed import main
+    >>> contracts, actors = main('bsc_mainnet_dpc108.json')
