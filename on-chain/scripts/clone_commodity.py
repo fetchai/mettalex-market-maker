@@ -118,3 +118,10 @@ def write_output(body, out_file=None):
     if out_file is not None:
         with open(out_file, 'w') as f:
             json.dump(body, f)
+
+
+if __name__ == '__main__':
+    w3, user = connect('bsc-mainnet', 'maker')
+    commodity = get_commodity(w3, '0x05f53BfC0a757d1057108EF585507ED5e171EE2d')
+    create_ctor_args(commodity, 'args_dpc108.json')
+    deployment = create_deployment_json(commodity, 'brownie_mettalex/bsc_mainnet_dpc108.json')
