@@ -47,11 +47,11 @@ def get_commodity(w3, pool_address=None, deployed_hash=None):
         'y_vault': pool,
         'y_controller': y_controller,
         'coin': coin,
-        'strategy': strategy,
+        'pool_controller': strategy,
         'long': ltk,
         'short': stk,
         'vault': vault,
-        'balancer': balancer
+        'balancer_pool': balancer
     }
 
     return commodity
