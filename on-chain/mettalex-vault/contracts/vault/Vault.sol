@@ -1,457 +1,291 @@
-pragma solidity ^0.5.2;
+const { expect } = require("chai");
+const { accounts, contract } = require("@openzeppelin/test-environment");
+const { BN, expectRevert, constants } = require("@openzeppelin/test-helpers");
 
-import "../interfaces/IToken.sol";
-import "../libraries/SafeERC20.sol";
-import "@openzeppelin/contracts/ownership/Ownable.sol";
+// importing deployed contract addresses
+const addresses = require("../../scripts/contract-cache/contract_cache.json");
 
-/**
- * @title Vault
- */
-contract Vault is Ownable {
-    using SafeMath for uint256;
-    using SafeERC20 for IToken;
+// importing dependent contracts
+const strategy = require("../../pool-controller/build/contracts/StrategyBalancerMettalexV3.json");
+const yVault = require("../../mettalex-yearn/build/contracts/yVault.json");
+const yController = require("../../mettalex-yearn/build/contracts/Controller.json");
+const WantFile = require("../../mettalex-vault/build/contracts/CoinToken.json");
+const PositionFile = require("../../mettalex-vault/build/contracts/PositionToken.json");
+const BPoolFile = require("../../mettalex-balancer/build/contracts/BPool.json");
+const VaultFile = require("../../mettalex-vault/build/contracts/Vault.json");
 
-    uint256 public version;
-    uint256 public feeAccumulated;
-    uint256 public priceSpot;
-    uint256 public priceCap;
-    uint256 public priceFloor;
-    uint256 public qtyMultiplier;
+var newContracts = {
+  stk: {},
+  ltk: {},
+  vault: {}
+}
 
-    // required collateral amount for the full range of outcome tokens
-    uint256 public collateralPerUnit;
-    uint256 public collateralFeePerUnit;
-    uint256 public settlementPrice;
-    uint256 public settlementTimeStamp;
-    address public collateralToken;
-    address public longPositionToken;
-    address public shortPositionToken;
-    address public oracle;
-    uint256 public settleFee = 0;
-    //Automated market maker pool controller
-    address public ammPoolController;
 
-    string public contractName;
-    bool public isSettled = false;
+// loading contract
+const StrategyContract = contract.fromABI(strategy.abi);
+const YContract = contract.fromABI(yVault.abi);
+const YController = contract.fromABI(yController.abi);
+const WantContract = contract.fromABI(WantFile.abi);
+const LongContract = contract.fromABI(PositionFile.abi, PositionFile.bytecode);
+const ShortContract = contract.fromABI(PositionFile.abi, PositionFile.bytecode);
+const BPoolContract = contract.fromABI(BPoolFile.abi);
+const VaultContract = contract.fromABI(VaultFile.abi,VaultFile.bytecode);
 
-    uint8 private constant MAX_SETTLEMENT_LENGTH = 120;
-    uint256 private collateralWithFeePerUnit;
+// defining user's account
+const user = accounts[0];
+const user2 = accounts[1];
 
-    event UpdatedLastPrice(uint256 _price);
-    event ContractSettled(uint256 indexed _settlePrice);
-    event FeeClaimed(address indexed _payee, uint256 _weiAmount);
-    event OracleUpdated(
-        address indexed _previousOracle,
-        address indexed _newOracle
+// Starting test block
+describe("UpdateCommodityAfterBreachTest", () => {
+  // initializing contracts using deployed address
+  beforeEach(async () => {
+    // contract addresses
+    const strategyAddress = addresses.PoolController;
+    const yearnControllerAddress = addresses.YVault;
+    const yControllerAddress = addresses.YController;
+    const wantAddress = addresses.Coin;
+    const longAddress = addresses.Long;
+    const shortAddress = addresses.Short;
+    const BPoolAddress = addresses.BPool;
+    const VaultAddress = addresses.Vault;
+
+    // contract instances
+    this.strategy = await StrategyContract.at(strategyAddress);
+    this.yearn = await YContract.at(yearnControllerAddress);
+    this.yController = await YController.at(yControllerAddress);
+    this.want = await WantContract.at(wantAddress);
+    this.long = await LongContract.at(longAddress);
+    this.short = await ShortContract.at(shortAddress);
+    this.bpool = await BPoolContract.at(BPoolAddress);
+    this.vault = await VaultContract.at(VaultAddress);
+
+    //  storing constructor defined addresses of strategy
+    want = await this.strategy.want();
+    balance = await this.strategy.balancer();
+    mettalexVault = await this.strategy.mettalexVault();
+    longToken = await this.strategy.longToken();
+    shortToken = await this.strategy.shortToken();
+    governance = await this.strategy.governance();
+    controller = await this.strategy.controller();
+
+    //Storing constructor defined addresses of Vault   
+    collateralToken = await this.vault.collateralToken();
+    longPositionToken = await this.vault.longPositionToken();
+    shortPositionToken = await this.vault.shortPositionToken();
+    oracle = await this.vault.oracle();
+  });
+
+  // transferring usdt balance from want contract owner address to user
+  it("depositing usdt in user's account ", async () => {
+    // initializing token decimals
+    wDecimals = await this.want.decimals();
+    lDecimals = await this.long.decimals();
+    sDecimals = await this.short.decimals();
+
+    // getting want owner address
+    ownerAddress = await this.want.owner();
+
+    // checking want owner balance greater than 0
+    expect(await this.want.balanceOf(ownerAddress)).to.be.bignumber.above("0");
+
+    // checking user want balance equal to 0
+    expect(await this.want.balanceOf(user)).to.be.bignumber.equal("0");
+
+    // transferring 1000000000 want tokens from want owner to user
+    await this.want.transfer(user, 1000000000 * Math.pow(10, wDecimals), {
+      from: ownerAddress
+    });
+
+    // confirming balance transferred to user
+    expect(await this.want.balanceOf(user)).to.be.bignumber.equal(
+      new BN(1000000000 * Math.pow(10, wDecimals))
     );
-    //AMM - Automated market maker
-    event AMMPoolControllerUpdated(
-        address indexed _previousAMMPoolController,
-        address indexed _newAMMPoolController
+  });
+
+  it("user deposits liquidity in the pool", async () => {
+    amount = 20000;
+
+    wDecimals = await this.want.decimals();
+
+    depositAmount = amount * Math.pow(10, wDecimals);
+
+    min = Number(await this.yearn.min());
+
+    max = Number(await this.yearn.max());
+    bal = await this.want.balanceOf(user) 
+    // console.log(bal.toString());
+    // console.log(user);
+
+    // value that is sent to Pool Controller after reserving some USDT in yVault
+    finalDeposit = (amount * Math.pow(10, wDecimals) * min) / max;
+
+    // check usdt, long, short balance for strategy
+    u = await this.want.balanceOf(addresses.BPool);
+    l = await this.long.balanceOf(addresses.BPool);
+    s = await this.short.balanceOf(addresses.BPool);
+
+    // checking yVault address with contract address deployed
+    expect(await this.yearn.address).to.be.equal(addresses.YVault);
+
+    // give allowance to vault contract
+    await this.want.approve(addresses.YVault, depositAmount, { from: user });
+
+    // checking allownace given
+    expect(
+      await this.want.allowance(accounts[0], addresses.YVault)
+    ).to.be.bignumber.equal(new BN(depositAmount));
+
+    // check strategy usdt balance
+    expect(
+      await this.want.balanceOf(addresses.PoolController)
+    ).to.be.bignumber.equal("0");
+
+    // checking strategies address mapped for want
+    expect(await this.yController.strategies(want)).to.be.equal(
+      addresses.PoolController
     );
-    event PositionsRedeemed(
-        address indexed _to,
-        uint256 _tokensBurned,
-        uint256 _collateralReturned
-    );
-    event PositionSettled(
-        address indexed _settler,
-        uint256 _longTokensBurned,
-        uint256 _shortTokensBurned,
-        uint256 _collateralReturned
-    );
-    event PositionsMinted(
-        address indexed _to,
-        uint256 _value,
-        uint256 _collateralRequired,
-        uint256 _collateralFee
-    );
-    event PositionSettledInBulk(
-        address[] _settlers,
-        uint8 _length,
-        uint256 _totalLongBurned,
-        uint256 _totalShortBurned,
-        uint256 _totalCollateralReturned
+
+    // call deposit function (Yearn)
+    await this.yearn.deposit(depositAmount, { from: user });
+
+    // checking balance of vault after deposit
+    expect(await this.yearn.available()).to.be.bignumber.equal(
+      new BN(finalDeposit)
     );
 
-    /**
-     * @dev The Vault constructor sets initial values
-     * @param _name string The name of the Vault
-     * @param _version uint256 The version of the Vault
-     * @param _collateralToken address The address of the collateral token
-     * @param _longPosition address The collateral token address
-     * @param _shortPosition address The short position token address
-     * @param _oracleAddress address The long position token address
-     * @param _ammPoolController address The AMM (Automated market maker) pool
-     * controller address
-     * @param _cap uint256 The cap for asset price
-     * @param _floor uint256 The floor for asset price
-     * @param _multiplier uint256 multiplier corresponding to the value of 1
-     * increment in price to token base units
-     * @param _feeRate uint256 The fee rate for locking collateral
-     */
-    constructor(
-        string memory _name,
-        uint256 _version,
-        address _collateralToken,
-        address _longPosition,
-        address _shortPosition,
-        address _oracleAddress,
-        address _ammPoolController,
-        uint256 _cap,
-        uint256 _floor,
-        uint256 _multiplier,
-        uint256 _feeRate
-    ) public {
-        require(_collateralToken != address(0));
-        require(_longPosition != address(0));
-        require(_shortPosition != address(0));
-        require(
-        (_collateralToken != _longPosition) &&
-        (_collateralToken != _shortPosition) &&
-        (_longPosition != _shortPosition)
-        );
-        require(_oracleAddress != address(0));
-        require(_ammPoolController != address(0));
+    // call earn to start movement of deposited amount together
+    await this.yearn.earn({ from: user });
 
-        contractName = _name;
-        version = _version;
-        collateralToken = _collateralToken;
-        longPositionToken = _longPosition;
-        shortPositionToken = _shortPosition;
-        oracle = _oracleAddress;
-        ammPoolController = _ammPoolController;
+    // pool controller usdt balance
+    expect(
+      await this.want.balanceOf(addresses.PoolController)
+    ).to.be.bignumber.equal("0");
 
-        priceCap = _cap;
-        priceFloor = _floor;
-        qtyMultiplier = _multiplier;
-        collateralPerUnit = _cap.sub(_floor).mul(_multiplier);
-        collateralFeePerUnit = _cap
-            .add(_floor)
-            .mul(_multiplier)
-            .mul(_feeRate)
-            .div(200000);
-        collateralWithFeePerUnit = collateralPerUnit.add(collateralFeePerUnit);
-    }
+    // yVault available balance
+    expect(await this.want.balanceOf(addresses.YVault)).to.be.bignumber.equal(
+      new BN(depositAmount - finalDeposit)
+    );
 
-    /**
-     * @dev Throws if called by any account other than Oracle
-     */
-    modifier onlyOracle {
-        require(msg.sender == oracle, "ORACLE_ONLY");
-        _;
-    }
+    // bpool usdt balance
+    expect(await this.want.balanceOf(addresses.BPool)).to.be.bignumber.equal(
+      new BN(finalDeposit / 2)
+    );
 
-    /**
-     * @dev Throws if contract is settled
-     */
-    modifier notSettled {
-        require(!isSettled, "Contract is already settled");
-        _;
-    }
+    // check long,short balance -> should have increased
+    expect(await this.short.balanceOf(addresses.BPool)).to.be.bignumber.above(
+      "0"
+    );
+    expect(await this.long.balanceOf(addresses.BPool)).to.be.bignumber.above(
+      "0"
+    );
+    // checking bounding for long token
+    expect(await this.strategy.isBound(longToken)).to.be.equal(true);
 
-    /**
-     * @dev Throws if contract is not settled
-     */
-    modifier settled {
-        require(isSettled, "Contract should be settled");
-        _;
-    }
+    // checking bounding for short token
+    expect(await this.strategy.isBound(shortToken)).to.be.equal(true);
+  });
 
-    /**
-     * @dev Throws if more than max-allowed number of addresses passed to settle
-     */
-    modifier withinMaxLength(uint8 settlerLength) {
-        require(
-            settlerLength <= MAX_SETTLEMENT_LENGTH,
-            "Cannot update more than 150 accounts"
-        );
-        _;
-    }
+  it("create imbalance (buy L tokens)", async () => {
+    x = await this.strategy.getExpectedOutAmount(
+      want,
+      longToken,
+      1000 * Math.pow(10, wDecimals),
+      { from: user }
+    );
 
-    /**
-     * @dev Used to claim fee accumulated by the vault
-     * @param _to address The address to transfer the fee
-     */
-    function claimFee(address _to) external onlyOwner {
-        require(
-            (_to != address(0)) && (_to != address(this)),
-            "invalid to address"
-        );
+    // approving usdt to strategy contract
+    await this.want.approve(
+      addresses.PoolController,
+      1000 * Math.pow(10, wDecimals),
+      { from: user }
+    );
 
-        uint256 claimedCollateral = feeAccumulated;
-        feeAccumulated = 0;
+    // defining max value
+    MAX_UINT_VALUE = constants.MAX_UINT256;
 
-        IToken(collateralToken).safeTransfer(_to, claimedCollateral);
-        emit FeeClaimed(_to, claimedCollateral);
-    }
+    // swapping usdt with long
+    await this.strategy.swapExactAmountIn(
+      want,
+      1000 * Math.pow(10, wDecimals),
+      longToken,
+      1,
+      MAX_UINT_VALUE,
+      { from: user }
+    );
 
-    /**
-     * @dev Changes the spot price of an asset
-     * @param _price uint256 The updated price
-     */
-    function updateSpot(uint256 _price) external onlyOracle notSettled {
-        // update spot if arbitration price is within contract bounds else settlecontract
-        if (_price >= priceFloor && _price <= priceCap) {
-            priceSpot = _price;
-            emit UpdatedLastPrice(_price);
-        } else {
-            _settleContract(_price);
-        }
-    }
+    // checking long tokens received amount
+    expect(
+      (longBalance = await this.long.balanceOf(user))
+    ).to.be.bignumber.equal(x[0]);
+  });
 
-    /**
-     * @dev Changes the address of Oracle contract
-     * @param _newOracle address The address of new oracle contract
-     */
-    function updateOracle(address _newOracle) external onlyOwner {
-        require(
-            (_newOracle != address(0)) && (_newOracle != address(this)),
-            "invalid oracle address"
-        );   
-        emit OracleUpdated(oracle, _newOracle);
-        oracle = _newOracle;
-    }
+  it("breach commodity", async () => {
 
-    /**
-     * @dev Changes the settle fee
-     * @param newSettleFee new settleFee
-     */
-    function updateSettleFee(uint256 newSettleFee) external onlyOwner{
-        require(newSettleFee <= (10**3), "ERR_MAX_SETTLE_FEE");
-        settleFee = newSettleFee;
-    }
+     //Cap price set as 3000 in depolyed Contract
+     const Cap = Number(await this.vault.priceCap());
 
-    /**
-     * @dev Changes the address of Automated Market Maker
-     * @param _newAMMPoolController address The address of new AMM (automated market maker)
-     * pool controller address
-     */
-    function updateAMMPoolController(address _newAMMPoolController)
-        external
-        onlyOwner
-    {
-        require(
-        (_newAMMPoolController != address(0)) && (_newAMMPoolController !=
-        address(this)),
-        "invalid amm pool controller"
-        );
-        emit AMMPoolControllerUpdated(ammPoolController, _newAMMPoolController);
-        ammPoolController = _newAMMPoolController;
-    }
+     //breachedspot price that can be set by the owner for commodity breach
+     const breachedSpot = Cap+1;
+ 
+     await this.vault.updateSpot(breachedSpot, {from: oracle});
 
-    /**
-     * @dev Mints the Long and Short position tokens
-     * @param _quantityToMint uint256 The amount of positions to be minted
-     */
-    function mintPositions(uint256 _quantityToMint) external notSettled {
-        uint256 collateralRequired = collateralPerUnit.mul(_quantityToMint);
-        uint256 collateralFee = _calculateFee(_quantityToMint);
+     expect(Number(await this.vault.settlementPrice()))
+       .to.be.equal(Number(breachedSpot));
+    
+    expect(await this.vault.isSettled()).to.equal(true);    
+  });
 
-        IToken(collateralToken).safeTransferFrom(
-            msg.sender,
-            address(this),
-            collateralRequired.add(collateralFee)
-        );
+  it("deploy contracts and Update Commodity After Breach", async () => {
 
-        IToken(longPositionToken).mint(msg.sender, _quantityToMint);
-        IToken(shortPositionToken).mint(msg.sender, _quantityToMint);
-        emit PositionsMinted(
-            msg.sender,
-            _quantityToMint,
-            collateralRequired,
-            collateralFee
-        );
-    }
+    //Deploy new position tokens and Mettalex vault
+    
+    ltk_name = await this.long.name();
+    ltk_symbol = await this.long.symbol();
+    ltk_decimals = await this.long.decimals();
+    ltk_version = await this.long.version();
+    const new_ltk = await LongContract.new(ltk_name, ltk_symbol, ltk_decimals, ltk_version);
 
-    /**
-     * @dev Mints the Long and Short position tokens based on amount of collateral
-     * @param _collateralAmount uint256 The amount of collateral to be deposited
-     */
-    function mintFromCollateralAmount(uint256 _collateralAmount)
-        external
-        notSettled
-    {
-        (
-            uint256 collateralFee,
-            uint256 quantityToMint
-        ) = _calculateFeeAndPositions(_collateralAmount);
+    stk_name = await this.short.name();
+    stk_symbol = await this.short.symbol();
+    stk_decimals = await this.short.decimals();
+    stk_version = await this.short.version();
+    const new_stk = await LongContract.new(stk_name, stk_symbol, stk_decimals, stk_version);
+    
+    contractName = await this.vault.contractName();
+    version = await this.vault.version();
+    collateralToken = await this.vault.collateralToken();
+    oracle = await this.vault.oracle();
+    strategy_address = await this.vault.ammPoolController();
 
-        IToken(collateralToken).safeTransferFrom(
-            msg.sender,
-            address(this),
-            _collateralAmount
-        );
+    const new_vault = await VaultContract.new(contractName, 1, collateralToken, new_ltk.address, new_stk.address,
+      user2, strategy_address, 5000, 4000, 1, 1);
+        
+    newContracts.stk = new_stk
+    newContracts.ltk = new_ltk
+    newContracts.vault = new_vault
 
-        IToken(longPositionToken).mint(msg.sender, quantityToMint);
-        IToken(shortPositionToken).mint(msg.sender, quantityToMint);
-        emit PositionsMinted(
-            msg.sender,
-            quantityToMint,
-            _collateralAmount.sub(collateralFee),
-            collateralFee
-        );
-    }
+    //handle breach
+    await this.strategy.handleBreach();
 
-    /**
-     * @dev Redeems the given amount of positions held by user
-     * @dev Overloaded method to redeem collateral to sender address
-     * @param _quantityToRedeem uint256 The quantity of position tokens to redeem
-     */
+    expect(await this.strategy.isBreachHandled()).to.equal(true);
 
-    function redeemPositions(uint256 _quantityToRedeem) external {
-        redeemPositions(msg.sender, _quantityToRedeem);
-    }
 
-    /**
-     * @dev Settles by returning collateral and burning positions
-     */
-    function settlePositions() external settled {
-        (
-            uint256 longBurned,
-            uint256 shortBurned,
-            uint256 collateralReturned
-        ) = _settle(
-            msg.sender,
-            IToken(collateralToken),
-            IToken(longPositionToken),
-            IToken(shortPositionToken)
-        );
+    const _whitelistVault = async () => {
+      owner = await new_vault.owner();
+      await this.long.setWhitelist(new_vault.address, true, { from: owner });
+      await this.short.setWhitelist(new_vault.address, true, { from: owner });
+    };
 
-        emit PositionSettled(
-            msg.sender,
-            longBurned,
-            shortBurned,
-            collateralReturned
-        );
-    }
+    await _whitelistVault();
 
-    /**
-     * @dev Settles multiple addresses at once
-     * @param _settlers address[] The array of user accounts to settle
-     */
-    function bulkSettlePositions(address[] calldata _settlers)
-        external
-        onlyOwner
-        settled
-        withinMaxLength(uint8(_settlers.length))
-    {
-        uint256 totalLongBurned;
-        uint256 totalShortBurned;
-        uint256 totalCollateralReturned;
+    //updateCommodityAfterBreach
+    await this.strategy.updateCommodityAfterBreach(
+      new_vault.address,
+      new_ltk.address,
+      new_stk.address, 
+      {from: await this.strategy.governance()});
 
-        IToken collateral = IToken(collateralToken);
-        IToken long = IToken(longPositionToken);
-        IToken short = IToken(shortPositionToken);
-
-        uint8 index = 0;
-        for (index; index < _settlers.length; index++) {
-            (
-                uint256 longBurned,
-                uint256 shortBurned,
-                uint256 collateralReturned
-            ) = _settle(_settlers[index], collateral, long, short);
-            totalLongBurned = totalLongBurned.add(longBurned);
-            totalShortBurned = totalShortBurned.add(shortBurned);
-            totalCollateralReturned = totalCollateralReturned.add(collateralReturned);
-        }
-
-        emit PositionSettledInBulk(
-            _settlers,
-            uint8(_settlers.length),
-            totalLongBurned,
-            totalShortBurned,
-            totalCollateralReturned
-        );
-    }
-
-    /**
-     * @dev Redeems the given amount of positions held by user
-     * @param _to address The address of user to transfer the collateral redeemed
-     * @param _redeemQuantity uint256 The amount of positions to redeem
-     */
-    function redeemPositions(address _to, uint256 _redeemQuantity) public {
-        IToken(longPositionToken).burn(msg.sender, _redeemQuantity);
-        IToken(shortPositionToken).burn(msg.sender, _redeemQuantity);
-
-        uint256 collateralReturned = collateralPerUnit.mul(_redeemQuantity);
-        // Destination address may not be the same as sender e.g. send to
-        // exchange wallet receive funds address
-        IToken(collateralToken).safeTransfer(_to, collateralReturned);
-
-        emit PositionsRedeemed(_to, _redeemQuantity, collateralReturned);
-    }
-
-    function _calculateFee(uint256 _quantityToMint) internal returns (uint256) {
-        if (msg.sender == ammPoolController) return 0;
-
-        uint256 collateralFee = collateralFeePerUnit.mul(_quantityToMint);
-        feeAccumulated = feeAccumulated.add(collateralFee);
-        return collateralFee;
-    }
-
-    function _calculateFeeAndPositions(uint256 _collateralAmount)
-        internal
-        returns (uint256, uint256)
-    {
-        if (msg.sender == ammPoolController) {
-            uint256 quantityToMint = _collateralAmount.div(collateralPerUnit);
-            return (0, quantityToMint);
-        }
-        uint256 quantityToMint = _collateralAmount.div(
-            collateralWithFeePerUnit
-        );
-        uint256 collateralFee = _collateralAmount
-        .mul(collateralFeePerUnit)
-        .div(collateralWithFeePerUnit);
-        feeAccumulated = feeAccumulated.add(collateralFee);
-        return (collateralFee, quantityToMint);
-    }
-
-    function _settleContract(uint256 _settlementPrice) private {
-        settlementTimeStamp = now;
-        isSettled = true;
-        settlementPrice = _settlementPrice;
-        contractName = string(abi.encodePacked(contractName, " (settled)"));
-
-        emit ContractSettled(_settlementPrice);
-    }
-
-    function _settle(
-        address _settler,
-        IToken _collateral,
-        IToken _long,
-        IToken _short
-    )
-        private
-        returns (
-            uint256,
-            uint256,
-            uint256
-        )
-    {
-        uint256 longBalance = _long.balanceOf(_settler);
-        uint256 shortBalance = _short.balanceOf(_settler);
-        uint256 fractionReturned = 1000;
-        if (msg.sender != ammPoolController) {
-            fractionReturned = fractionReturned.sub(settleFee);
-        }
-        uint256 collateralReturned;
-        uint256 collateralAmount;
-        if (settlementPrice < priceFloor) {
-            collateralAmount = collateralPerUnit.mul(shortBalance);
-            collateralReturned = collateralPerUnit.mul(shortBalance.mul(fractionReturned).div(1000));
-        } else if (settlementPrice > priceCap) {
-            collateralAmount = collateralPerUnit.mul(longBalance);
-            collateralReturned = collateralPerUnit.mul(longBalance.mul(fractionReturned).div(1000));
-        }
-
-        _long.burn(_settler, longBalance);
-        _short.burn(_settler, shortBalance);
-        _collateral.safeTransfer(_settler, collateralReturned);
-
-        feeAccumulated = feeAccumulated.add(collateralAmount.sub(collateralReturned));
-
-        return (longBalance, shortBalance, collateralReturned);
-    }
-}   
+      //set initial spot price of new Vault contract
+    await new_vault.updateSpot(breachedSpot, {from: user2});
+  });
+}); 

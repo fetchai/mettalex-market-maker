@@ -33,9 +33,10 @@ const VaultContract = contract.fromABI(VaultFile.abi,VaultFile.bytecode);
 
 // defining user's account
 const user = accounts[0];
+const user2 = accounts[1];
 
 // Starting test block
-describe("UpdateCommodityAfterBreach", () => {
+describe("UpdateCommodityAfterBreachTest", () => {
   // initializing contracts using deployed address
   beforeEach(async () => {
     // contract addresses
@@ -58,7 +59,7 @@ describe("UpdateCommodityAfterBreach", () => {
     this.bpool = await BPoolContract.at(BPoolAddress);
     this.vault = await VaultContract.at(VaultAddress);
 
-    //  storing constructor defined addresses
+    //  storing constructor defined addresses of strategy
     want = await this.strategy.want();
     balance = await this.strategy.balancer();
     mettalexVault = await this.strategy.mettalexVault();
@@ -66,6 +67,12 @@ describe("UpdateCommodityAfterBreach", () => {
     shortToken = await this.strategy.shortToken();
     governance = await this.strategy.governance();
     controller = await this.strategy.controller();
+
+    //Storing constructor defined addresses of Vault   
+    collateralToken = await this.vault.collateralToken();
+    longPositionToken = await this.vault.longPositionToken();
+    shortPositionToken = await this.vault.shortPositionToken();
+    oracle = await this.vault.oracle();
   });
 
   // transferring usdt balance from want contract owner address to user
@@ -213,10 +220,25 @@ describe("UpdateCommodityAfterBreach", () => {
   });
 
   it("breach commodity", async () => {
+
+     //Cap price set as 3000 in depolyed Contract
+     const Cap = Number(await this.vault.priceCap());
+
+     //breachedspot price that can be set by the owner for commodity breach
+     const breachedSpot = Cap+1;
+ 
+     await this.vault.updateSpot(breachedSpot, {from: oracle});
+
+     expect(Number(await this.vault.settlementPrice()))
+       .to.be.equal(Number(breachedSpot));
     
+    expect(await this.vault.isSettled()).to.equal(true);    
   });
 
   it("deploy contracts", async () => {
+
+    //Deploy new position tokens and Mettalex vault
+    
     ltk_name = await this.long.name();
     ltk_symbol = await this.long.symbol();
     ltk_decimals = await this.long.decimals();
@@ -236,12 +258,29 @@ describe("UpdateCommodityAfterBreach", () => {
     strategy_address = await this.vault.ammPoolController();
 
     const new_vault = await VaultContract.new(contractName, 1, collateralToken, new_ltk.address, new_stk.address,
-      user, strategy_address, 5000, 4000, 1, 1);
+      user2, strategy_address, 5000, 4000, 1, 1);
         
-    newContracts.stk = new_stk
-    newContracts.ltk = new_ltk
-    newContracts.vault = new_vault
+    newContracts.stk = new_stk;
+    newContracts.ltk = new_ltk;
+    newContracts.vault = new_vault;
 
+    //set initial spot price of new Vault contract
+    await this.new_vault.updateSpot(breachedSpot, {from: user2});
   });
-  
-});
+
+  it("Handle breach", async () => {
+
+    await this.strategy.handleBreach();
+
+    expect(await this.strategy.isBreachHandled()).to.equal(true);
+  });
+
+  it("Update Commodity after handling breach", async () => {
+
+    //updateCommodityAfterBreach
+    await strategy.updateCommodityAfterBreach(
+      new_vault.address,
+      new_ltk.address,
+      new_stk.address, {from: governence});
+  });
+}); 
