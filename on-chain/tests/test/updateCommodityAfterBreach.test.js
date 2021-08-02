@@ -12,15 +12,24 @@ const yController = require("../../mettalex-yearn/build/contracts/Controller.jso
 const WantFile = require("../../mettalex-vault/build/contracts/CoinToken.json");
 const PositionFile = require("../../mettalex-vault/build/contracts/PositionToken.json");
 const BPoolFile = require("../../mettalex-balancer/build/contracts/BPool.json");
+const VaultFile = require("../../mettalex-vault/build/contracts/Vault.json");
+
+var newContracts = {
+  stk: {},
+  ltk: {},
+  vault: {}
+}
+
 
 // loading contract
 const StrategyContract = contract.fromABI(strategy.abi);
 const YContract = contract.fromABI(yVault.abi);
 const YController = contract.fromABI(yController.abi);
 const WantContract = contract.fromABI(WantFile.abi);
-const LongContract = contract.fromABI(PositionFile.abi);
-const ShortContract = contract.fromABI(PositionFile.abi);
+const LongContract = contract.fromABI(PositionFile.abi, PositionFile.bytecode);
+const ShortContract = contract.fromABI(PositionFile.abi, PositionFile.bytecode);
 const BPoolContract = contract.fromABI(BPoolFile.abi);
+const VaultContract = contract.fromABI(VaultFile.abi,VaultFile.bytecode);
 
 // defining user's account
 const user = accounts[0];
@@ -37,6 +46,7 @@ describe("UpdateCommodityAfterBreach", () => {
     const longAddress = addresses.Long;
     const shortAddress = addresses.Short;
     const BPoolAddress = addresses.BPool;
+    const VaultAddress = addresses.Vault;
 
     // contract instances
     this.strategy = await StrategyContract.at(strategyAddress);
@@ -46,6 +56,7 @@ describe("UpdateCommodityAfterBreach", () => {
     this.long = await LongContract.at(longAddress);
     this.short = await ShortContract.at(shortAddress);
     this.bpool = await BPoolContract.at(BPoolAddress);
+    this.vault = await VaultContract.at(VaultAddress);
 
     //  storing constructor defined addresses
     want = await this.strategy.want();
@@ -105,11 +116,6 @@ describe("UpdateCommodityAfterBreach", () => {
     u = await this.want.balanceOf(addresses.BPool);
     l = await this.long.balanceOf(addresses.BPool);
     s = await this.short.balanceOf(addresses.BPool);
-
-    // checking balances to be 0
-    //expect(u).to.be.bignumber.equal("0");
-  // expect(l).to.be.bignumber.equal("0");
-  // expect(s).to.be.bignumber.equal("0");
 
     // checking yVault address with contract address deployed
     expect(await this.yearn.address).to.be.equal(addresses.YVault);
@@ -173,26 +179,12 @@ describe("UpdateCommodityAfterBreach", () => {
   });
 
   it("create imbalance (buy L tokens)", async () => {
-    // checking expected out amount after swap
-    // x = await this.strategy.getExpectedOutAmount(
-    //   want,
-    //   longToken,
-    //   100 * Math.pow(10, lDecimals),
-    //   { from: user }
-    // );
-    // expect(x[0]).to.be.bignumber.above("0");
-    // expect(x[1]).to.be.bignumber.above("0");
-
-    // // get expected amount to be received
     x = await this.strategy.getExpectedOutAmount(
       want,
       longToken,
       1000 * Math.pow(10, wDecimals),
       { from: user }
     );
-
-    // checking controller pool controller address
-    // expect(this.strategy.address).to.be.equal(addresses.PoolController);
 
     // approving usdt to strategy contract
     await this.want.approve(
@@ -224,4 +216,32 @@ describe("UpdateCommodityAfterBreach", () => {
     
   });
 
+  it("deploy contracts", async () => {
+    ltk_name = await this.long.name();
+    ltk_symbol = await this.long.symbol();
+    ltk_decimals = await this.long.decimals();
+    ltk_version = await this.long.version();
+    const new_ltk = await LongContract.new(ltk_name, ltk_symbol, ltk_decimals, ltk_version);
+
+    stk_name = await this.short.name();
+    stk_symbol = await this.short.symbol();
+    stk_decimals = await this.short.decimals();
+    stk_version = await this.short.version();
+    const new_stk = await LongContract.new(stk_name, stk_symbol, stk_decimals, stk_version);
+    
+    contractName = await this.vault.contractName();
+    version = await this.vault.version();
+    collateralToken = await this.vault.collateralToken();
+    oracle = await this.vault.oracle();
+    strategy_address = await this.vault.ammPoolController();
+
+    const new_vault = await VaultContract.new(contractName, 1, collateralToken, new_ltk.address, new_stk.address,
+      user, strategy_address, 5000, 4000, 1, 1);
+        
+    newContracts.stk = new_stk
+    newContracts.ltk = new_ltk
+    newContracts.vault = new_vault
+
+  });
+  
 });
