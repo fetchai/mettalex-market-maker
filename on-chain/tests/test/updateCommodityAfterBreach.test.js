@@ -213,10 +213,16 @@ describe("UpdateCommodityAfterBreach", () => {
   });
 
   it("breach commodity", async () => {
-    
+    //cap 3000, floor 2000
+    const breachedSpot = 4500;
+    oracle = await this.vault.oracle();
+    await this.vault.updateSpot(breachedSpot, {from: oracle});
+    expect(Number(await this.vault.settlementPrice()))
+      .to.be.equal(Number(breachedSpot));
+    expect(await this.vault.isSettled()).to.equal(true);
   });
 
-  it("deploy contracts", async () => {
+  it("deploy contracts, set whitelist", async () => {
     ltk_name = await this.long.name();
     ltk_symbol = await this.long.symbol();
     ltk_decimals = await this.long.decimals();
@@ -237,11 +243,31 @@ describe("UpdateCommodityAfterBreach", () => {
 
     const new_vault = await VaultContract.new(contractName, 1, collateralToken, new_ltk.address, new_stk.address,
       user, strategy_address, 5000, 4000, 1, 1);
-        
+    
+    owner=await new_vault.owner();
+    await new_ltk.setWhitelist(new_vault.address, true, { from: owner });
+    await new_stk.setWhitelist(new_vault.address, true, { from: owner });
+
     newContracts.stk = new_stk
     newContracts.ltk = new_ltk
     newContracts.vault = new_vault
-
   });
   
+  it("Update Spot, Handle breach and Update Commodity After Breach", async () => {
+    //update spot
+    oracle = await newContracts.vault.oracle();
+    await newContracts.vault.updateSpot(4500,{
+      from: oracle
+    });
+
+    //handle breach
+    await this.strategy.handleBreach();
+    expect(await this.strategy.isBreachHandled()).to.equal(true);
+    
+    //updateCommodityAfterBreach
+    x = await this.strategy.updateCommodityAfterBreach(
+      newContracts.vault.address, newContracts.ltk.address, newContracts.stk.address,
+      {from: governance}
+      );
+  });
 });
