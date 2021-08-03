@@ -235,7 +235,7 @@ describe("UpdateCommodityAfterBreachTest", () => {
     expect(await this.vault.isSettled()).to.equal(true);    
   });
 
-  it("deploy contracts", async () => {
+  it("deploy contracts and Update Commodity After Breach", async () => {
 
     //Deploy new position tokens and Mettalex vault
     
@@ -260,27 +260,38 @@ describe("UpdateCommodityAfterBreachTest", () => {
     const new_vault = await VaultContract.new(contractName, 1, collateralToken, new_ltk.address, new_stk.address,
       user2, strategy_address, 5000, 4000, 1, 1);
         
-    newContracts.stk = new_stk;
-    newContracts.ltk = new_ltk;
-    newContracts.vault = new_vault;
+    newContracts.stk = new_stk
+    newContracts.ltk = new_ltk
+    newContracts.vault = new_vault
 
-    //set initial spot price of new Vault contract
-    await this.new_vault.updateSpot(breachedSpot, {from: user2});
-  });
+    console.log(governance);
 
-  it("Handle breach", async () => {
-
+    //handle breach
     await this.strategy.handleBreach();
 
     expect(await this.strategy.isBreachHandled()).to.equal(true);
-  });
 
-  it("Update Commodity after handling breach", async () => {
+    // setting governance through governance
+    this.strategy.setGovernance(accounts[2], { from: governance });
+
+    expect(await this.strategy.governance()).to.be.equal(accounts[2]);
+
+    const _whitelistVault = async () => {
+      await this.long.setWhitelist(new_vault.address, true, { from: user });
+      await this.short.setWhitelist(new_vault.address, true, { from: user });
+    };
+
+    await _whitelistVault();
 
     //updateCommodityAfterBreach
-    await strategy.updateCommodityAfterBreach(
+    await expectRevert( await this.strategy.updateCommodityAfterBreach(
       new_vault.address,
       new_ltk.address,
-      new_stk.address, {from: governence});
+      new_stk.address, 
+      {from: accounts[2]}), 
+      "revert");
+
+      //set initial spot price of new Vault contract
+    await new_vault.updateSpot(breachedSpot, {from: user2});
   });
 }); 
