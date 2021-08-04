@@ -20,6 +20,9 @@ var newContracts = {
   vault: {}
 }
 
+var balances ={
+  want: 0
+}
 
 // loading contract
 const StrategyContract = contract.fromABI(strategy.abi);
@@ -178,39 +181,43 @@ describe("UpdateCommodityAfterBreach", () => {
     expect(await this.strategy.isBound(shortToken)).to.be.equal(true);
   });
 
-  it("create imbalance (buy L tokens)", async () => {
-    x = await this.strategy.getExpectedOutAmount(
-      want,
-      longToken,
-      1000 * Math.pow(10, wDecimals),
-      { from: user }
-    );
 
-    // approving usdt to strategy contract
-    await this.want.approve(
-      addresses.PoolController,
-      1000 * Math.pow(10, wDecimals),
-      { from: user }
-    );
+  // creating imbalance would cause some profit to go to either 
+  // user or to the system which makes checking liquidity transfer 
+  // difficult
+  // it("create imbalance (buy L tokens)", async () => {
+  //   x = await this.strategy.getExpectedOutAmount(
+  //     want,
+  //     longToken,
+  //     1000 * Math.pow(10, wDecimals),
+  //     { from: user }
+  //   );
 
-    // defining max value
-    MAX_UINT_VALUE = constants.MAX_UINT256;
+  //   // approving usdt to strategy contract
+  //   await this.want.approve(
+  //     addresses.PoolController,
+  //     1000 * Math.pow(10, wDecimals),
+  //     { from: user }
+  //   );
 
-    // swapping usdt with long
-    await this.strategy.swapExactAmountIn(
-      want,
-      1000 * Math.pow(10, wDecimals),
-      longToken,
-      1,
-      MAX_UINT_VALUE,
-      { from: user }
-    );
+  //   // defining max value
+  //   MAX_UINT_VALUE = constants.MAX_UINT256;
 
-    // checking long tokens received amount
-    expect(
-      (longBalance = await this.long.balanceOf(user))
-    ).to.be.bignumber.equal(x[0]);
-  });
+  //   // swapping usdt with long
+  //   await this.strategy.swapExactAmountIn(
+  //     want,
+  //     1000 * Math.pow(10, wDecimals),
+  //     longToken,
+  //     1,
+  //     MAX_UINT_VALUE,
+  //     { from: user }
+  //   );
+
+  //   // checking long tokens received amount
+  //   expect(
+  //     (longBalance = await this.long.balanceOf(user))
+  //   ).to.be.bignumber.equal(x[0]);
+  // });
 
   it("breach commodity", async () => {
     //cap 3000, floor 2000
@@ -220,6 +227,7 @@ describe("UpdateCommodityAfterBreach", () => {
     expect(Number(await this.vault.settlementPrice()))
       .to.be.equal(Number(breachedSpot));
     expect(await this.vault.isSettled()).to.equal(true);
+    balances.want = await this.want.balanceOf(this.vault.address);
   });
 
   it("deploy contracts, set whitelist", async () => {
@@ -269,5 +277,10 @@ describe("UpdateCommodityAfterBreach", () => {
       newContracts.vault.address, newContracts.ltk.address, newContracts.stk.address,
       {from: governance}
       );
+  });
+
+  it("Compare migration of liquidity", async() =>{
+    newVaultBalance = await this.want.balanceOf(newContracts.vault.address);
+    expect(balances.want.toString()).to.equal(newVaultBalance.toString());
   });
 });
