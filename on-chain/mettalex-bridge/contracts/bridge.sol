@@ -40,6 +40,7 @@ contract Bridge {
         external
         onlyOwner
     {
+        require(_maxDeposit > conversionRate, "ERR: conversion rate < max Deposit");
         maxDeposit = _maxDeposit;
     }
 
@@ -47,7 +48,7 @@ contract Bridge {
         tokenAddress = _tokenAddress;
     }
 
-    function setdepositLimitMultiplier(uint256 _limit) external onlyOwner {
+    function setDepositLimitMultiplier(uint256 _limit) external onlyOwner {
         depositLimitMultiplier = _limit;
     }
 
@@ -64,13 +65,14 @@ contract Bridge {
         IUSDT(tokenAddress).transfer(msg.sender, _amountUSDT.mul(conversionRate));
     }
 
-    function withdraw(uint256 _amountwUSDT) external {
-        require(_amountwUSDT < IUSDT(USDTaddress).balanceOf(address(this)), "ERR: max Withdraw");
+    function withdraw(uint256 _amountwUSDT) external returns (uint256) {
+        require(_amountwUSDT <= IUSDT(USDTaddress).balanceOf(address(this)), "ERR: max Withdraw");
         uint256 amountOut = _amountwUSDT.div(conversionRate);
         uint256 amountDecrease = amountOut.mul(conversionRate);
         IUSDT(tokenAddress).transferFrom(msg.sender, address(this), amountDecrease);
         amountDeposited[msg.sender] = amountDeposited[msg.sender].sub(amountDecrease);
         IUSDT(USDTaddress).transfer(msg.sender, amountOut);
+        return amountOut;
     }
     
 }
