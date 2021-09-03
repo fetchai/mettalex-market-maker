@@ -57,6 +57,90 @@ def connect(network, account='user'):
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
 
+    elif network == 'polygon':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = 'https://rpc-mainnet.maticvigil.com/'
+        os.environ['WEB3_CHAIN_ID'] = '137'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
+    elif network == 'polygon-testnet':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = 'https://rpc-mumbai.maticvigil.com/'
+        os.environ['WEB3_CHAIN_ID'] = '80001'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
+    elif network == 'harmony-testnet':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = 'https://api.s0.b.hmny.io/'
+        os.environ['WEB3_CHAIN_ID'] = '1666700000'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['harmony-key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
+    elif network == 'okexchain-testnet':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = 'https://exchaintestrpc.okex.org'
+        os.environ['WEB3_CHAIN_ID'] = '65'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
+    elif network == 'avalanche':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = 'https://api.avax.network/ext/bc/C/rpc'
+        os.environ['WEB3_CHAIN_ID'] = '43114'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
+    elif network == 'avalanche-testnet':
+        config = read_config()
+        os.environ['WEB3_PROVIDER_URI'] = 'https://api.avax-test.network/ext/bc/C/rpc'
+        os.environ['WEB3_CHAIN_ID'] = '43113'
+
+        from web3.middleware import construct_sign_and_send_raw_middleware
+        from web3.middleware import geth_poa_middleware
+        from web3.auto import w3
+
+        admin = w3.eth.account.from_key(config[account]['key'])
+        w3.eth.defaultAccount = admin.address
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
+
     elif network == 'kovan':
         config = read_config()
         os.environ['WEB3_INFURA_PROJECT_ID'] = config['infura']['project_id']
@@ -69,13 +153,13 @@ def connect(network, account='user'):
         w3.eth.defaultAccount = admin.address
         w3.middleware_onion.add(construct_sign_and_send_raw_middleware(admin))
     elif is_ipv4_socket_address(network):
-        from web3 import Web3
-        w3 = Web3(Web3.HTTPProvider("http://" + network))
-        try:
-            w3.eth.defaultAccount = w3.eth.accounts[0]
-            admin = w3.eth.accounts[0]
-        except:
-            raise Exception("Ensure ganache-cli is connected")
+            from web3 import Web3
+            w3 = Web3(Web3.HTTPProvider("http://" + network))
+            try:
+                w3.eth.defaultAccount = w3.eth.accounts[0]
+                admin = w3.eth.accounts[0]
+            except:
+                raise Exception("Ensure ganache-cli is connected")
     else:
         raise ValueError(f'Unknown network {network}')
 
@@ -103,10 +187,10 @@ def get_contracts(w3, strategy_version=1):
         __file__).parent / ".." / 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
     # USDT
     USDT_build_file = Path(__file__).parent / ".." / 'mettalex-coin' / \
-                      'build' / 'contracts' / 'TetherToken.json'
+        'build' / 'contracts' / 'TetherToken.json'
     # Use Mettalex vault version of CoinToken rather than USDT in mettalex-coin to avoid Solidity version issue
     coin_build_file = Path(__file__).parent / ".." / 'mettalex-vault' / \
-                      'build' / 'contracts' / 'CoinToken.json'
+        'build' / 'contracts' / 'CoinToken.json'
     # Use position token for both long and short tokens
     position_build_file = Path(
         __file__).parent / ".." / 'mettalex-vault' / 'build' / 'contracts' / 'PositionToken.json'
@@ -169,7 +253,6 @@ def deploy_contract(w3, contract, *args):
 
 def connect_contract(w3, contract, address):
     """Connect to existing deployed contract
-
     :param w3:
     :param contract:
     :param address:
@@ -184,7 +267,7 @@ def connect_contract(w3, contract, address):
 
 def connect_deployed(w3, contracts, contract_file_name='contract_address.json', cache_file_name='contract_cache.json'):
     contract_file = Path(__file__).parent / \
-                    'contract-cache' / contract_file_name
+        'contract-cache' / contract_file_name
     cache_file = Path(__file__).parent / 'contract-cache' / cache_file_name
 
     if not os.path.isfile(contract_file):
@@ -229,8 +312,7 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
 
             elif k == 'PoolController':
                 deployed_contracts[k] = deploy_contract(
-                    w3, contracts[k], contract_cache['YController'], contract_cache['Coin'], contract_cache['BPool'],
-                    contract_cache['Vault'], contract_cache['Long'], contract_cache['Short'])
+                    w3, contracts[k], contract_cache['YController'], contract_cache['Coin'], contract_cache['BPool'], contract_cache['Vault'], contract_cache['Long'], contract_cache['Short'])
             elif k == 'Vault':
                 tok_version = args['Long'][3]
                 cap = args['Vault'][0] * PRICE_SCALE
@@ -241,11 +323,8 @@ def connect_deployed(w3, contracts, contract_file_name='contract_address.json', 
                 oracle = args['Vault'][5]
                 if not oracle:
                     oracle = account
-                deployed_contracts[k] = deploy_contract(w3, contracts[k], vault_name, tok_version,
-                                                        contract_cache['Coin'], contract_cache['Long'],
-                                                        contract_cache['Short'],
-                                                        oracle, contract_cache['BPool'], cap, floor, multiplier,
-                                                        fee_rate)
+                deployed_contracts[k] = deploy_contract(w3, contracts[k], vault_name, tok_version, contract_cache['Coin'], contract_cache['Long'], contract_cache['Short'],
+                                                        oracle, contract_cache['BPool'], cap, floor, multiplier, fee_rate)
             else:
                 deployed_contracts[k] = deploy_contract(
                     w3, contracts[k], *args[k])
@@ -294,17 +373,15 @@ def deploy(w3, contracts, cache_file_name='contract_cache.json'):
     y_controller = deploy_contract(w3, contracts['YController'], account)
     y_vault = deploy_contract(
         w3, contracts['YVault'], coin.address, y_controller.address)
-
+    
     strategy_helper = deploy_contract(w3, contracts['StrategyHelper'])
 
     if (len(args['PoolController'])):
         strategy = deploy_contract(
-            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address,
-            ltk.address, stk.address, args['PoolController'][0])
+            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, args['PoolController'][0])
     else:
         strategy = deploy_contract(
-            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address,
-            ltk.address, stk.address, coin.address)
+            w3, contracts['PoolController'], y_controller.address, coin.address, balancer.address, vault.address, ltk.address, stk.address, coin.address)
 
     contract_addresses = {
         'BFactory': balancer_factory.address,
@@ -348,7 +425,15 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
     # Find pool address from contract event
     receipt = balancer_factory.events.LOG_NEW_POOL().getLogs()
-    pool_address = receipt[0]['args']['pool']
+    # Fix Okexchain issue to deploy balancer pool contract
+    # Balancer pool contract seems unable to call functions
+    p_address = ""
+    if not receipt:
+        p_address = tx_receipt.logs[0].address
+    else:
+        p_address = receipt[0]['args']['pool']
+
+    pool_address = p_address
     balancer = w3.eth.contract(
         address=pool_address,
         abi=pool_contract.abi
@@ -358,7 +443,7 @@ def create_balancer_pool(w3, pool_contract, balancer_factory):
 
 def connect_balancer(w3):
     build_file = Path(__file__).parent / ".." / \
-                 'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
+        'mettalex-balancer' / 'build' / 'contracts' / 'BPool.json'
     with open(build_file, 'r') as f:
         contract_details = json.load(f)
 
@@ -376,6 +461,14 @@ def get_network(w3):
         network = 'kovan'
     elif chain_id == 95:
         network = 'bsc-testnet'
+    elif chain_id == 80001:
+        network = 'polygon-testnet'
+    elif chain_id == 1666700000:
+        network = 'harmony-testnet'
+    elif chain_id == 65:
+        network = 'okexchain-testnet'
+    elif chain_id == 43113:
+        network = 'avalanche-testnet'                           
     return network
 
 
@@ -434,7 +527,7 @@ def upgrade_strategy_v2(w3, contracts, strategy, y_controller, coin, balancer, v
 
 def connect_strategy(w3, address):
     build_file = Path(__file__).parent / ".." / 'pool-controller' / \
-                 'build' / 'contracts' / 'StrategyBalancerMettalex.json'
+        'build' / 'contracts' / 'StrategyBalancerMettalex.json'
     with open(build_file, 'r') as f:
         contract_details = json.load(f)
 
@@ -471,7 +564,7 @@ def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None):
     # Connect strategy helper to strategy
     set_strategy_helper(
         w3, deployed_contracts['PoolController'], deployed_contracts['StrategyHelper'], acct=admin
-    )
+    )        
     if price is not None:
         # May be connecting to existing vault, if not then can set tht price here
         set_price(w3, deployed_contracts['Vault'], price)
@@ -726,7 +819,6 @@ def swap_amount_in(w3, balancer, tok_in, qty_in, tok_out, customAccount=None, mi
 def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=False):
     """Get spot price for tok_out in terms of number of tok_in required to purchase
     NB: copied from setup_testnet_pool
-
     :param w3: Web3 connection
     :param balancer: Web3 contract for pool
     :param tok_in: Web3 contract for input token e.g. ltok to sell Long position to pool
@@ -750,9 +842,9 @@ def get_spot_price(w3, balancer, tok_in, tok_out, unitless=False, include_fee=Fa
     if not unitless:
         # Take decimals into account
         spot_price = spot_price * 10 ** (
-                tok_out.functions.decimals().call()
-                - tok_in.functions.decimals().call()
-                - 18)
+            tok_out.functions.decimals().call()
+            - tok_in.functions.decimals().call()
+            - 18)
     return spot_price
 
 
@@ -786,7 +878,7 @@ def mintPositionTokens(w3, vault, coin, collateralAmount=20000, customAccount=No
     if customAccount:
         acct = customAccount
     collateralAmount_unitless = collateralAmount * \
-                                10 ** (coin.functions.decimals().call())
+        10 ** (coin.functions.decimals().call())
     tx_hash = coin.functions.approve(vault.address, collateralAmount_unitless).transact(
         {'from': acct, 'gas': 5_000_000}
     )
@@ -905,8 +997,7 @@ def swap(w3, strategy, tokenIn, amountIn, tokenOut, amountOut=1, user=None):
     # swap
     MAX_UINT_VALUE = 2 ** 256 - 1
 
-    tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut,
-                                                   MAX_UINT_VALUE).transact(
+    tx_hash = strategy.functions.swapExactAmountIn(tokenIn.address, amountIn, tokenOut.address, amountOut, MAX_UINT_VALUE).transact(
         {'from': user, 'gas': 5_000_000}
     )
 
@@ -1018,14 +1109,10 @@ def redeem(w3, vault, amount):
         {'from': acct, 'gas': 1_000_000}
     )
     tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-
+    tx_receipt.gasUsed
 
 def is_ipv4_socket_address(network):
-    return re.match(
-        r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",
-        network)
-
-
+    return re.match(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",network)
 def run_simulation(name, w3, admin, deployed_contracts):
     if name == 'swap':
         simulate_scenario(w3, admin, deployed_contracts)
@@ -1039,7 +1126,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--network', '-n', dest='network', default='local',
-        help='For connecting to local, kovan, bsc-testnet or bsc-mainnet network'
+        help='For connecting to local, kovan, polygon, harmony-testnet, okexchain-testnet, avalanche-testnet and bsc-testnet or bsc-mainnet network'
     )
     parser.add_argument(
         '--strategy', '-v', dest='strategy', default=3,
@@ -1048,10 +1135,10 @@ if __name__ == '__main__':
     parser.add_argument(
         '--simulation', '-s', dest='simulation', default='none',
         help=''
-    )
+    )    
 
     args = parser.parse_args()
-    assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet'} or is_ipv4_socket_address(args.network)
+    assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet', 'polygon', 'polygon-testnet', 'harmony-testnet', 'okexchain-testnet', 'avalanche-testnet'} or is_ipv4_socket_address(args.network)
     assert args.strategy in {'1', '2', '3', '4'}
 
     w3, admin = connect(args.network, 'admin')
