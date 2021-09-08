@@ -31,7 +31,7 @@ def connect(network, account='user'):
             raise Exception("Ensure ganache-cli is connected")
     elif network == 'bsc-testnet':
         config = read_config()
-        os.environ['WEB3_PROVIDER_URI'] = 'https://data-seed-prebsc-1-s1.binance.org:8545/'
+        os.environ['WEB3_PROVIDER_URI'] = 'https://data-seed-prebsc-2-s3.binance.org:8545/'
         os.environ['WEB3_CHAIN_ID'] = '97'
 
         from web3.middleware import construct_sign_and_send_raw_middleware
@@ -119,7 +119,13 @@ def get_contracts(w3, strategy_version=1):
         __file__).parent / ".." / 'mettalex-yearn' / 'build' / 'contracts' / 'yVault.json'
 
     # Strategy contracts
-    build_file_name = f'StrategyBalancerMettalexV{strategy_version}.json'
+    if strategy_version == 0:
+        build_file_name = f'StrategyBalancerMettalexOld.json'
+        print('Deploying with older strategy')
+    else:
+        build_file_name = f'StrategyBalancerMettalexV{strategy_version}.json'
+        print('Deploying with latest strategy')
+
 
     pool_controller_build_file = Path(
         __file__).parent / ".." / 'pool-controller' / 'build' / 'contracts' / build_file_name
@@ -476,6 +482,35 @@ def full_setup(w3, admin, deployed_contracts=None, price=None, contracts=None):
         # May be connecting to existing vault, if not then can set tht price here
         set_price(w3, deployed_contracts['Vault'], price)
     return w3, admin, deployed_contracts
+
+def full_setup_old(w3, admin, deployed_contracts=None, price=None, contracts=None):
+    if deployed_contracts is None:
+        print('Deploying contracts')
+        deployed_contracts = deploy(w3, contracts)
+    print('Whitelisting Mettalex vault to mint position tokens')
+    whitelist_vault(
+        w3, deployed_contracts['Vault'], deployed_contracts['Long'], deployed_contracts['Short'])
+    print('Setting strategy')
+    set_strategy(
+        w3, deployed_contracts['YController'], deployed_contracts['Coin'], deployed_contracts['PoolController'])
+    print('Setting y-vault controller')
+    set_yvault_controller(
+        w3, deployed_contracts['YController'], deployed_contracts['YVault'].address, deployed_contracts['Coin'].address)
+    print('Setting balancer controller')
+    set_balancer_controller(
+        w3, deployed_contracts['BPool'], deployed_contracts['PoolController'])
+    print('Setting Mettalex vault AMM')
+    set_autonomous_market_maker(
+        w3, deployed_contracts['Vault'], deployed_contracts['PoolController'])  # Zero fees for AMM
+    # Connect strategy helper to strategy
+    # set_strategy_helper(
+    #     w3, deployed_contracts['PoolController'], deployed_contracts['StrategyHelper'], acct=admin
+    # )
+    if price is not None:
+        # May be connecting to existing vault, if not then can set tht price here
+        set_price(w3, deployed_contracts['Vault'], price)
+    return w3, admin, deployed_contracts
+
 
 
 def whitelist_vault(w3, vault, ltk, stk):
@@ -1052,7 +1087,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     assert args.network in {'local', 'kovan', 'bsc-testnet', 'bsc-mainnet'} or is_ipv4_socket_address(args.network)
-    assert args.strategy in {'1', '2', '3', '4'}
+    assert args.strategy in {'1', '2', '3', '4', '0'}
 
     w3, admin = connect(args.network, 'admin')
     contracts = get_contracts(w3, int(args.strategy))
@@ -1063,8 +1098,12 @@ if __name__ == '__main__':
         deployed_contracts = connect_deployed(w3, contracts)
     elif args.action == 'setup':
         #  will deploy and do the full setup
-        w3, admin, deployed_contracts = full_setup(
-            w3, admin, contracts=contracts, price=2500)
+        if(int(args.strategy) == 0):
+            w3, admin, deployed_contracts = full_setup_old(
+                w3, admin, contracts=contracts, price=2500)    
+        else: 
+            w3, admin, deployed_contracts = full_setup(
+                w3, admin, contracts=contracts, price=2500)
     else:
         raise ValueError(f'Unknown action: {args.action}')
 

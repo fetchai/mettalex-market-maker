@@ -25,7 +25,7 @@ var balances ={
 }
 
 // loading contract
-const StrategyContract = contract.fromABI(strategy.abi);
+const StrategyContract = contract.fromABI(strategy.abi, strategy.bytecode);
 const YContract = contract.fromABI(yVault.abi);
 const YController = contract.fromABI(yController.abi);
 const WantContract = contract.fromABI(WantFile.abi);
@@ -185,39 +185,48 @@ describe("UpdateCommodityAfterBreach", () => {
   // creating imbalance would cause some profit to go to either 
   // user or to the system which makes checking liquidity transfer 
   // difficult
-  // it("create imbalance (buy L tokens)", async () => {
-  //   x = await this.strategy.getExpectedOutAmount(
-  //     want,
-  //     longToken,
-  //     1000 * Math.pow(10, wDecimals),
-  //     { from: user }
-  //   );
+  it("create imbalance (buy L tokens)", async () => {
+    x = await this.strategy.getExpectedOutAmount(
+      want,
+      longToken,
+      1000 * Math.pow(10, wDecimals),
+      { from: user }
+    );
 
-  //   // approving usdt to strategy contract
-  //   await this.want.approve(
-  //     addresses.PoolController,
-  //     1000 * Math.pow(10, wDecimals),
-  //     { from: user }
-  //   );
+    // approving usdt to strategy contract
+    await this.want.approve(
+      addresses.PoolController,
+      1000 * Math.pow(10, wDecimals),
+      { from: user }
+    );
 
-  //   // defining max value
-  //   MAX_UINT_VALUE = constants.MAX_UINT256;
+    // defining max value
+    MAX_UINT_VALUE = constants.MAX_UINT256;
 
-  //   // swapping usdt with long
-  //   await this.strategy.swapExactAmountIn(
-  //     want,
-  //     1000 * Math.pow(10, wDecimals),
-  //     longToken,
-  //     1,
-  //     MAX_UINT_VALUE,
-  //     { from: user }
-  //   );
+    // swapping usdt with long
+    await this.strategy.swapExactAmountIn(
+      want,
+      1000 * Math.pow(10, wDecimals),
+      longToken,
+      1,
+      MAX_UINT_VALUE,
+      { from: user }
+    );
 
-  //   // checking long tokens received amount
-  //   expect(
-  //     (longBalance = await this.long.balanceOf(user))
-  //   ).to.be.bignumber.equal(x[0]);
-  // });
+    // checking long tokens received amount
+    expect(
+      (longBalance = await this.long.balanceOf(user))
+    ).to.be.bignumber.equal(x[0]);
+  });
+
+  it("mint tokens", async() => {
+    await this.want.approve(
+      addresses.Vault,
+      1000 * Math.pow(10, wDecimals),
+      { from: user }
+    );
+    x = await this.vault.mintFromCollateralAmount(10* Math.pow(10, wDecimals), {from: user});
+  })
 
   it("breach commodity", async () => {
     //cap 3000, floor 2000
@@ -228,6 +237,68 @@ describe("UpdateCommodityAfterBreach", () => {
       .to.be.equal(Number(breachedSpot));
     expect(await this.vault.isSettled()).to.equal(true);
     balances.want = await this.want.balanceOf(this.vault.address);
+    console.log(balances.want.toString(), " --- balance of vault just after breach")
+  });
+
+  it("checking for old strategy", async()=>{
+    try {
+      strategyHelper = await this.strategy.strategyHelper()
+    } catch (error) {
+      console.log('No Helper found, i.e. older strategy');
+      console.log('Updating to latest strategy');
+
+      y_controller_address = await this.strategy.controller();
+      coin_address = await this.strategy.want();
+      balancer_address = await this.strategy.balancer();
+      vault_address = await this.strategy.mettalexVault();
+      ltk_address = await this.strategy.longToken();
+      stk_address = await this.strategy.shortToken();
+      mtlx_address = await this.strategy.mtlxToken();
+
+      const new_strategy = await StrategyContract.new(
+        y_controller_address,
+        coin_address,
+        balancer_address,
+        vault_address,
+        ltk_address,
+        stk_address,
+        mtlx_address
+      );
+
+      //console.log(new_strategy.address);
+      owner=await this.vault.owner();
+
+      await this.strategy.setNewStrategy(new_strategy.address,{
+        from: owner
+      });
+
+      //update amm pool controller
+      await this.vault.updateAMMPoolController(new_strategy.address, {
+        from: owner
+      });
+      old_stgy = await this.yController.strategies(want);
+      //console.log(old_stgy);
+      
+      //set strategy in controller
+      await this.yController.setStrategy(want, new_strategy.address,{
+        from: owner
+      });
+      //update pool controller from old strategy
+      await this.strategy.updatePoolController(new_strategy.address,{
+        from: owner
+      });
+      //set strategy helper
+      //console.log(addresses.StrategyHelper);
+      governance = await new_strategy.governance();
+      await new_strategy.setStrategyHelper(addresses.StrategyHelper,{
+        from: governance
+      });
+
+      //change in DB ie in cache file locally
+      addresses.PoolController = new_strategy.address;
+
+      console.log("strategy updated from", old_stgy, "to", addresses.PoolController);
+    }
   });
 
   it("deploy contracts, set whitelist", async () => {
@@ -279,8 +350,103 @@ describe("UpdateCommodityAfterBreach", () => {
       );
   });
 
-  it("Compare migration of liquidity", async() =>{
+  it("call earn (main check to see if liquidity has been appropriately transfered)", async() =>{
+    // newVaultBalance = await this.want.balanceOf(newContracts.vault.address);
+    // console.log(newVaultBalance.toString());
+    // expect(balances.want.toString()).to.equal(newVaultBalance.toString());
+    await this.yearn.earn({ from: user });
+    console.log("earn called successfully");
     newVaultBalance = await this.want.balanceOf(newContracts.vault.address);
-    expect(balances.want.toString()).to.equal(newVaultBalance.toString());
+    console.log(newVaultBalance.toString(), " --- balance of vault after liquidity transfer");
   });
+
+  it("user deposits liquidity in the pool", async () => {
+    balances.want = await this.want.balanceOf(this.vault.address);
+    console.log(balances.want.toString(), " --- balance remaining in vault after breach")
+
+    amount = 20000;
+
+    wDecimals = await this.want.decimals();
+
+    depositAmount = amount * Math.pow(10, wDecimals);
+
+    min = Number(await this.yearn.min());
+
+    max = Number(await this.yearn.max());
+    bal = await this.want.balanceOf(user) 
+    // console.log(bal.toString());
+    // console.log(user);
+
+    // value that is sent to Pool Controller after reserving some USDT in yVault
+    finalDeposit = (amount * Math.pow(10, wDecimals) * min) / max;
+
+    // check usdt, long, short balance for strategy
+    u = await this.want.balanceOf(addresses.BPool);
+    l = await newContracts.ltk.balanceOf(addresses.BPool);
+    s = await newContracts.stk.balanceOf(addresses.BPool);
+
+    // checking yVault address with contract address deployed
+    expect(await this.yearn.address).to.be.equal(addresses.YVault);
+
+    // give allowance to vault contract
+    await this.want.approve(addresses.YVault, depositAmount, { from: user });
+
+    // checking allownace given
+    expect(
+      await this.want.allowance(accounts[0], addresses.YVault)
+    ).to.be.bignumber.equal(new BN(depositAmount));
+
+    // check strategy usdt balance
+    expect(
+      await this.want.balanceOf(addresses.PoolController)
+    ).to.be.bignumber.equal("0");
+
+    // checking strategies address mapped for want
+    expect(await this.yController.strategies(want)).to.be.equal(
+      addresses.PoolController
+    );
+
+    // call deposit function (Yearn)
+    await this.yearn.deposit(depositAmount, { from: user });
+
+    // checking balance of vault after deposit
+    // expect(await this.yearn.available()).to.be.bignumber.equal(
+    //   new BN(finalDeposit)
+    // );
+
+    // call earn to start movement of deposited amount together
+    await this.yearn.earn({ from: user });
+
+    // pool controller usdt balance
+    expect(
+      await this.want.balanceOf(addresses.PoolController)
+    ).to.be.bignumber.equal("0");
+
+    // yVault available balance
+    // expect(await this.want.balanceOf(addresses.YVault)).to.be.bignumber.equal(
+    //   new BN(depositAmount - finalDeposit)
+    // );
+
+    // bpool usdt balance
+    // expect(await this.want.balanceOf(addresses.BPool)).to.be.bignumber.equal(
+    //   new BN(finalDeposit / 2)
+    // );
+
+    // check long,short balance -> should have increased
+    expect(await newContracts.stk.balanceOf(addresses.BPool)).to.be.bignumber.above(
+      "0"
+    );
+    expect(await newContracts.ltk.balanceOf(addresses.BPool)).to.be.bignumber.above(
+      "0"
+    );
+    // checking bounding for long token
+    expect(await this.strategy.isBound(longToken)).to.be.equal(true);
+
+    // checking bounding for short token
+    expect(await this.strategy.isBound(shortToken)).to.be.equal(true);
+
+
+  });
+
+  
 });
